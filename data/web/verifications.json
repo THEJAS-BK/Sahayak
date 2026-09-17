@@ -1,0 +1,107 @@
+{
+  "list": [
+    {
+      "id": "ver-0001",
+      "email": "anitha.dev@example.com",
+      "full_name": "Anitha Devi",
+      "role": "senior",
+      "status": "PENDING",
+      "created_at": "2026-09-16T09:12:00Z",
+      "reviewed_at": null
+    },
+    {
+      "id": "ver-0002",
+      "email": "karthik.shetty@example.com",
+      "full_name": "Karthik Shetty",
+      "role": "volunteer",
+      "status": "PENDING",
+      "created_at": "2026-09-16T10:30:00Z",
+      "reviewed_at": null
+    },
+    {
+      "id": "ver-0003",
+      "email": "divya.poojary@example.com",
+      "full_name": "Divya Poojary",
+      "role": "volunteer",
+      "status": "PENDING",
+      "created_at": "2026-09-17T07:45:00Z",
+      "reviewed_at": null
+    }
+  ],
+  "detail_senior": {
+    "id": "ver-0001",
+    "user_id": "sen-0001",
+    "role": "senior",
+    "status": "PENDING",
+    "fcm_token": "senior-fcm-token-anitha",
+    "user": { "id": "sen-0001", "email": "anitha.dev@example.com" },
+    "form_data": {
+      "full_name": "Anitha Devi",
+      "phone_number": "+919876500001",
+      "home_latitude": 13.161,
+      "home_longitude": 74.883,
+      "preferred_language": "kannada",
+      "aadhaar_number": "234567890123",
+      "emergency_contact": {
+        "name": "Ramesh Devi",
+        "phone": "+919876500011",
+        "relation": "son"
+      }
+    }
+  },
+  "detail_volunteer": {
+    "id": "ver-0002",
+    "user_id": "vol-0001",
+    "role": "volunteer",
+    "status": "PENDING",
+    "fcm_token": "volunteer-fcm-token-karthik",
+    "user": { "id": "vol-0001", "email": "karthik.shetty@example.com" },
+    "form_data": {
+      "full_name": "Karthik Shetty",
+      "phone_number": "+919876500021",
+      "organization": "Udupi Red Cross",
+      "skills": ["nursing", "first_aid"],
+      "base_latitude": 13.3522,
+      "base_longitude": 74.7928,
+      "id_proof_ref": "KRL-2024-00452",
+      "aadhaar_number": "456712389045",
+      "club_id": "CLUB-UD-001"
+    }
+  },
+  "approve": {
+    "method": "PATCH",
+    "path": "/api/verifications/ver-0001",
+    "body": { "status": "APPROVED", "reason": "Documents verified over phone call" },
+    "response": {
+      "success": true,
+      "data": {
+        "verification": {
+          "id": "ver-0001",
+          "status": "APPROVED",
+          "role": "senior",
+          "user_id": "sen-0001",
+          "review_reason": "Documents verified over phone call",
+          "reviewed_at": "2026-09-17T20:11:00Z"
+        }
+      }
+    }
+  },
+  "reject": {
+    "method": "PATCH",
+    "path": "/api/verifications/ver-0003",
+    "body": { "status": "REJECTED", "reason": "Aadhaar verification failed" },
+    "response": {
+      "success": true,
+      "data": {
+        "verification": {
+          "id": "ver-0003",
+          "status": "REJECTED",
+          "role": "volunteer",
+          "user_id": "vol-0004",
+          "review_reason": "Aadhaar verification failed",
+          "reviewed_at": "2026-09-17T20:24:00Z"
+        }
+      }
+    }
+  }
+}

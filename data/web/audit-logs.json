@@ -1,0 +1,115 @@
+{
+  "list": [
+    {
+      "id": "aud-0001",
+      "created_at": "2026-09-17T19:05:00Z",
+      "actor": null,
+      "actor_name": "System",
+      "action": "request.dispatched",
+      "entity_type": "help_request",
+      "entity_id": "req-1023",
+      "metadata": { "attempt": 1, "batch_size": 2 }
+    },
+    {
+      "id": "aud-0002",
+      "created_at": "2026-09-17T18:59:00Z",
+      "actor": "pol-0001",
+      "actor_name": "Officer Ashok Kini",
+      "action": "verification.approved",
+      "entity_type": "user_verification",
+      "entity_id": "ver-0002",
+      "metadata": { "role": "volunteer", "reason": null }
+    },
+    {
+      "id": "aud-0003",
+      "created_at": "2026-09-17T18:57:00Z",
+      "actor": "vol-0001",
+      "actor_name": "Karthik Shetty",
+      "action": "request.accepted",
+      "entity_type": "help_request",
+      "entity_id": "req-1024",
+      "before": { "status": "DISPATCHED" },
+      "after": { "status": "ACCEPTED", "assigned_volunteer_id": "vol-0001" }
+    },
+    {
+      "id": "aud-0004",
+      "created_at": "2026-09-17T18:43:00Z",
+      "actor": null,
+      "actor_name": "System",
+      "action": "request.dispatched",
+      "entity_type": "help_request",
+      "entity_id": "req-1024",
+      "metadata": { "attempt": 1, "batch_size": 4 }
+    },
+    {
+      "id": "aud-0005",
+      "created_at": "2026-09-17T18:42:00Z",
+      "actor": "sen-0001",
+      "actor_name": "Anitha Devi",
+      "action": "request.created",
+      "entity_type": "help_request",
+      "entity_id": "req-1024",
+      "after": { "status": "PENDING", "source": "voice_agent" }
+    },
+    {
+      "id": "aud-0006",
+      "created_at": "2026-09-17T18:41:00Z",
+      "actor": "sen-0001",
+      "actor_name": "Anitha Devi",
+      "action": "emergency.logged",
+      "entity_type": "emergency_event",
+      "entity_id": "evt-0001",
+      "after": { "status": "LOGGED", "escalated_to_112": true }
+    },
+    {
+      "id": "aud-0007",
+      "created_at": "2026-09-17T16:12:00Z",
+      "actor": "sen-0001",
+      "actor_name": "Anitha Devi",
+      "action": "registration.senior.submitted",
+      "entity_type": "user_verification",
+      "entity_id": "ver-0001",
+      "after": { "role": "senior", "status": "PENDING" }
+    },
+    {
+      "id": "aud-0008",
+      "created_at": "2026-09-12T09:12:00Z",
+      "actor": "pol-0001",
+      "actor_name": "Officer Ashok Kini",
+      "action": "emergency.reviewed",
+      "entity_type": "emergency_event",
+      "entity_id": "evt-0002",
+      "before": { "status": "LOGGED" },
+      "after": { "status": "REVIEWED" }
+    },
+    {
+      "id": "aud-0009",
+      "created_at": "2026-09-05T16:10:00Z",
+      "actor": "sen-0004",
+      "actor_name": "Meenakshi Bhat",
+      "action": "request.cancelled",
+      "entity_type": "help_request",
+      "entity_id": "req-0975",
+      "before": { "status": "PENDING" },
+      "after": { "status": "CANCELLED" }
+    }
+  ],
+  "detail": {
+    "id": "aud-0003",
+    "created_at": "2026-09-17T18:57:00Z",
+    "actor": "vol-0001",
+    "actor_name": "Karthik Shetty",
+    "action": "request.accepted",
+    "entity_type": "help_request",
+    "entity_id": "req-1024",
+    "before": { "status": "DISPATCHED", "assigned_volunteer_id": null },
+    "after": { "status": "ACCEPTED", "assigned_volunteer_id": "vol-0001", "accepted_at": "2026-09-17T18:57:00Z" },
+    "metadata": { "snapshotted_latitude": 13.3486, "snapshotted_longitude": 74.7859 }
+  },
+  "filters": {
+    "status": ["PENDING", "APPROVED", "REJECTED"],
+    "request_status": ["PENDING", "MATCHING", "DISPATCHED", "ACCEPTED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "UNASSIGNED"],
+    "priority": ["NORMAL", "URGENT"],
+    "trigger_type": ["semantic_llm", "acoustic_distress", "keyword_repetition"]
+  }
+}

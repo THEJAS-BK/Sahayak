@@ -2,7 +2,32 @@
 
 Initial repository structure and development environment setup for **Sahayak**.
 
-> Status: Executed. No application features are implemented in this step.
+> Status: **All phases complete.** Backend API implemented end-to-end;
+> `npm run build` and `npm run test` green (47 tests). See
+> `api-plan.md` (contracts), `development-plan.md` (as-built notes),
+> `decisions.md` (deviations).
+
+## What it produced
+
+- Git repository + root `.gitignore`, `README.md`, `plans/` skeleton.
+- `backend/` — Express 5 + TypeScript (ESM), `GET /health` only.
+- `web/` — Vite + React + TypeScript shell (police portal, logic deferred).
+- `mobile/` (Flutter) and `voice-agent/` — placeholders, deferred.
+
+## Where this build goes next
+
+- "app + police portal" backend API (24 endpoints, Postgres, FCM/SMTP,
+  matching, background jobs) — see `development-plan.md` for the phased build
+  order and `database-design.md` + `api-plan.md` for the contracts.
+- The voice-agent boundary rule still applies: it holds **no** backend
+  credential and makes **no** backend calls; the app submits with the senior's
+  JWT.
+
+## Run commands
+
+- Web dev: `npm run dev` (inside `web/`)
+- Backend dev: `npm run dev` (inside `backend/`)
+- Backend prod: `npm run build && npm start` (inside `backend/`)
 
 ## Scope
 
@@ -79,7 +104,7 @@ Sahayak/
 ├── voice-agent/                 (empty placeholder)
 ├── plans/
 ├── README.md
-└── .gitignore
+└── skills-lock.json
 ```
 
 ## Decisions
