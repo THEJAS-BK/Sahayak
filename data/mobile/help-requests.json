@@ -1,0 +1,64 @@
+{
+  "create_request": {
+    "method": "POST",
+    "path": "/api/requests",
+    "body": {
+      "category": "grocery_assistance",
+      "description": "Need help buying groceries for the week",
+      "details": { "items": ["milk", "vegetables", "rice", "oil"] },
+      "latitude": 13.1625,
+      "longitude": 74.885,
+      "priority": "normal",
+      "source": "voice_agent"
+    },
+    "response": {
+      "success": true,
+      "data": { "request_id": "req-1024", "status": "PENDING" }
+    }
+  },
+  "my_requests_senior": [
+    {
+      "id": "req-1024",
+      "category": "grocery_assistance",
+      "description": "Need help buying groceries for the week",
+      "status": "IN_PROGRESS",
+      "priority": "normal",
+      "source": "voice_agent",
+      "created_at": "2026-09-17T18:42:00Z",
+      "assigned_volunteer": { "id": "vol-0001", "full_name": "Karthik Shetty", "phone_number": "+919876500021" }
+    },
+    {
+      "id": "req-1010",
+      "category": "medical_assistance",
+      "description": "Need a ride to the clinic for a check-up",
+      "status": "COMPLETED",
+      "priority": "urgent",
+      "source": "flutter_app",
+      "created_at": "2026-09-12T08:15:00Z",
+      "completed_at": "2026-09-12T09:40:00Z"
+    },
+    {
+      "id": "req-0981",
+      "category": "transport_assistance",
+      "description": "Ride to the temple for a family function",
+      "status": "COMPLETED",
+      "priority": "normal",
+      "source": "flutter_app",
+      "created_at": "2026-09-08T07:00:00Z",
+      "completed_at": "2026-09-08T07:55:00Z"
+    }
+  ],
+  "assignment_contact": {
+    "method": "GET",
+    "path": "/api/requests/:id/volunteer (Q-08)",
+    "response": {
+      "success": true,
+      "data": {
+        "full_name": "Karthik Shetty",
+        "phone_number": "+919876500021",
+        "organization": "Udupi Red Cross",
+        "skills": ["nursing", "first_aid"]
+      }
+    }
+  }
+}

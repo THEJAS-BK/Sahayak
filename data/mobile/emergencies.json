@@ -1,0 +1,40 @@
+{
+  "log_emergency": {
+    "method": "POST",
+    "path": "/api/emergency-events",
+    "body": {
+      "trigger_type": "acoustic_distress",
+      "source": "voice_agent",
+      "help_request_id": "req-1024",
+      "detail": { "keywords": ["help", "pain", "alone"] },
+      "latitude": 13.161,
+      "longitude": 74.883
+    },
+    "response": {
+      "success": true,
+      "data": {
+        "event_id": "evt-0001",
+        "status": "LOGGED",
+        "escalated_to_112": true
+      }
+    }
+  },
+  "log_emergency_without_request": {
+    "method": "POST",
+    "path": "/api/emergency-events",
+    "body": {
+      "trigger_type": "semantic_llm",
+      "source": "voice_agent",
+      "help_request_id": "req-1010",
+      "detail": { "intent": "medical_emergency", "confidence": 0.92 }
+    },
+    "response": {
+      "success": true,
+      "data": {
+        "event_id": "evt-0002",
+        "status": "LOGGED",
+        "escalated_to_112": true
+      }
+    }
+  }
+}

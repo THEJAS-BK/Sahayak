@@ -24,6 +24,8 @@ coverage/
 # Runtime data
 *.pid
 *.pid.lock
+.pgdata/
+.socket/
 
 # IDE / editors
 .idea/
