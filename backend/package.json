@@ -14,7 +14,9 @@
     "db:start": "bash scripts/dev-db.sh",
     "db:migrate": "tsx scripts/migrate.ts up",
     "db:down": "tsx scripts/migrate.ts down",
-    "db:reset": "tsx scripts/migrate.ts reset"
+    "db:reset": "tsx scripts/migrate.ts reset",
+    "db:seed": "tsx scripts/seed.ts",
+    "db:seed:fresh": "tsx scripts/seed.ts --fresh"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

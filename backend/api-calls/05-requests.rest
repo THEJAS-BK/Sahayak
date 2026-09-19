@@ -1,0 +1,123 @@
+@host = http://localhost:3000
+@seniorToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjpudWxsLCJpc19hY3RpdmUiOmZhbHNlLCJpYXQiOjE3ODk3OTU5NDAsImV4cCI6MTc4OTgyNDc0MCwiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6ImU1OTFkYzMyLTdjY2UtNDRmMC1iZjgyLWZjODM0YjNlZjA4OSJ9.O7BTVwZAZsLZ9LP72DxrhmqF7C39QtNd6ncE4w-dh_Q
+@volunteerToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjpudWxsLCJpc19hY3RpdmUiOmZhbHNlLCJpYXQiOjE3ODk3OTU5NTcsImV4cCI6MTc4OTgyNDc1NywiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6IjIyYTAwYWJjLThmNmEtNDUxNi05ZjA1LWY3MWYyODcyMTlhYiJ9.FWYZrXG4_p8QcmPJJtv4HxF1M5s5PSIah0k_oDaTSgA
+@policeToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9saWNlIiwiaXNfYWN0aXZlIjp0cnVlLCJpYXQiOjE3ODk3OTU5NzEsImV4cCI6MTc4OTgyNDc3MSwiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6IjA1Yjg4YmYwLTYwMGYtNGRlOS1hY2E1LTNiNWViZDYzODQ3ZiJ9.L5Rd0e6jlJaNhoUmJy2wLJYlkasIMbjloLkTjEaHOEw
+@requestId = 34153411-a523-4fc8-aca9-8cc99a6edafd
+@lat = 12.9141
+@lng = 74.8560
+@radiusM = 5000
+
+### Q-01 Create help request (senior) -> 201 + dispatch
+POST {{host}}/api/requests
+Authorization: Bearer {{seniorToken}}
+Content-Type: application/json
+
+{
+  "category": "medical_transport",
+  "description": "Need a ride to the hospital for a checkup",
+  "latitude": {{lat}},
+  "longitude": {{lng}},
+  "priority": "normal",
+  "source": "flutter_app"
+}
+
+### Q-01 Urgent help request
+POST {{host}}/api/requests
+Authorization: Bearer {{seniorToken}}
+Content-Type: application/json
+
+{
+  "category": "first_aid",
+  "description": "Feeling chest pain, need immediate assistance",
+  "latitude": {{lat}},
+  "longitude": {{lng}},
+  "priority": "urgent",
+  "source": "voice_agent"
+}
+
+### Q-01 Duplicate open request -> 409 REQUEST_ALREADY_OPEN
+POST {{host}}/api/requests
+Authorization: Bearer {{seniorToken}}
+Content-Type: application/json
+
+{
+  "category": "daily_errands",
+  "description": "Need help getting groceries",
+  "latitude": {{lat}},
+  "longitude": {{lng}},
+  "priority": "normal",
+  "source": "flutter_app"
+}
+
+### Q-02 List my requests (senior)
+GET {{host}}/api/requests/me
+Authorization: Bearer {{seniorToken}}
+
+### Q-02 List my requests (volunteer)
+GET {{host}}/api/requests/me
+Authorization: Bearer {{volunteerToken}}
+
+### Q-03 Get request detail (senior)
+GET {{host}}/api/requests/{{requestId}}
+Authorization: Bearer {{seniorToken}}
+
+###! Q-03 Get request detail (police)
+GET {{host}}/api/requests/{{requestId}}
+Authorization: Bearer {{policeToken}}
+
+### Q-04 Nearby requests (volunteer)
+GET {{host}}/api/requests/nearby?lat={{lat}}&lng={{lng}}&radius_m={{radiusM}}
+Authorization: Bearer {{volunteerToken}}
+
+### Q-05 Accept request (volunteer) -> first-wins
+PATCH {{host}}/api/requests/{{requestId}}/accept
+Authorization: Bearer {{volunteerToken}}
+
+### Q-06 Update status to IN_PROGRESS (assigned volunteer only)
+PATCH {{host}}/api/requests/{{requestId}}/status
+Authorization: Bearer {{volunteerToken}}
+Content-Type: application/json
+
+{
+  "status": "IN_PROGRESS"
+}
+
+### Q-06 Mark request COMPLETED (assigned volunteer)
+PATCH {{host}}/api/requests/{{requestId}}/status
+Authorization: Bearer {{volunteerToken}}
+Content-Type: application/json
+
+{
+  "status": "COMPLETED"
+}
+
+### Q-06 Invalid status -> 400
+PATCH {{host}}/api/requests/{{requestId}}/status
+Authorization: Bearer {{volunteerToken}}
+Content-Type: application/json
+
+{
+  "status": "CANCELLED"
+}
+
+### Q-07 Cancel request (senior, only before ACCEPTED)
+PATCH {{host}}/api/requests/{{requestId}}/cancel
+Authorization: Bearer {{seniorToken}}
+
+### Q-08 Get assigned volunteer contact (senior, after ACCEPTED)
+GET {{host}}/api/requests/{{requestId}}/volunteer
+Authorization: Bearer {{seniorToken}}
+
+### Role guard: volunteer cannot create requests -> 403
+POST {{host}}/api/requests
+Authorization: Bearer {{volunteerToken}}
+Content-Type: application/json
+
+{
+  "category": "test",
+  "description": "Should fail",
+  "latitude": {{lat}},
+  "longitude": {{lng}},
+  "priority": "normal",
+  "source": "flutter_app"
+}

@@ -85,13 +85,13 @@ export async function verifyOtpAndIssueTokens(emailInput: string, code: string):
       return { user, accessToken: signAccessToken(user, '8h') }
     }
     const refreshToken = await createRefreshToken(db, user.id)
-    return { user, accessToken: signAccessToken(user), refreshToken }
+    return { user, accessToken: signAccessToken(user,'8h'), refreshToken }
   })
 }
 
 export async function refreshSession(rawToken: string): Promise<VerifiedSession> {
   const { refreshToken, user } = await rotateRefreshToken(pool, rawToken)
-  return { user, accessToken: signAccessToken(user), refreshToken }
+  return { user, accessToken: signAccessToken(user,'8h'), refreshToken }
 }
 
 export async function logout(rawToken: string): Promise<void> {

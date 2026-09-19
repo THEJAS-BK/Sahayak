@@ -133,6 +133,12 @@ also logged in `decisions.md`):
 - **P-02** supports `actor_id=null` (system events) via the query string.
 - Notifications target a dev-stub FCM sender (log-and-continue) and a fixed
   police topic token; SMTP is stubbed with `sentEmails` capture for tests.
+- **Dev seeding (post-ship):** `backend/scripts/seed.ts` (`npm run db:seed` /
+  `db:seed:fresh`) loads the `data/` personas — police officer, 5 seniors,
+  4 volunteers, 3 pending registrations, requests in every state, emergencies
+  and audit logs — into the dev database with `now()`-relative timestamps.
+  Added for frontend/demo development; the test suite stays fixture-driven and
+  unchanged (`database-design.md` "Migration strategy" for details).
 - Final check: `npm run build` clean, `npm run typecheck` clean, 47/47 tests
   across 5 suites (`auth`, `registration`, `requests`, `emergency`, plus the
   Phase 0 smoke suite).

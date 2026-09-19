@@ -1,0 +1,7 @@
+@host = http://localhost:3000
+
+### Health check
+GET {{host}}/health
+
+### Unknown route -> 404
+GET {{host}}/api/does-not-exist

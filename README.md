@@ -26,8 +26,10 @@ client:
   audit logs).
 
 The data mirrors the contracts in `plans/api-plan.md` and the wireframes in
-`plans/client-design/`. It is illustrative only — it is not seeded into the
-database. See `data/README.md` for the file-by-file guide.
+`plans/client-design/`. The same personas (Anitha Devi, Karthik Shetty, …) plus
+a police officer, requests, emergencies and audit logs can be loaded into the
+dev database with `npm run db:seed` (see `backend/scripts/seed.ts`). See
+`data/README.md` for the file-by-file guide.
 
 ## Backend
 
@@ -58,6 +60,8 @@ npm run typecheck         # type-check only (no emit)
 npm test                  # run the Vitest test suite
 npm run db:migrate        # apply pending migrations only
 npm run db:down           # revert the last migration
+npm run db:seed           # seed the dev database (fails if data already exists)
+npm run db:seed:fresh     # wipe business tables, then reseed
 ```
 
 ### Environment

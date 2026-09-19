@@ -49,6 +49,9 @@ data/
 
 ## Notes
 
-- This data is illustrative only — it is not seeded into the database and is not
-  covered by the backend test suite.
+- This data is illustrative only and is not covered by the backend test suite.
+- The same personas can be loaded into the dev database by
+  `backend/scripts/seed.ts`, run via `npm run db:seed` /
+  `npm run db:seed:fresh` — it is not a 1:1 dump of these files, but an
+  equivalent snapshot with real UUIDs and `now()`-relative timestamps.
 - Keep files in sync with `plans/api-plan.md` when contracts change.

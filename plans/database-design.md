@@ -203,9 +203,13 @@ PENDING ─(match)─► MATCHING ──► DISPATCHED ─(accept)─► ACCEPTE
 - All tables above land across the phase migrations (auth → users/otp/tokens,
   registration → profiles/verifications, requests/matching → help_requests,
   emergencies → emergency_events; `audit_logs` early since phases 1+ write it).
-- **No seed of fake business data.** The dev environment is exercised via
-  integration tests against a test database (created/dropped by vitest global
-  setup).
+- Dev seeding lives in `backend/scripts/seed.ts`, run via `npm run db:seed`
+  (empty tables only) / `npm run db:seed:fresh` (wipes business tables first).
+  It loads the `data/` personas — a police officer, 5 seniors, 4 volunteers,
+  3 pending registrations, requests in every state (BR-13: one open request per
+  senior), emergencies and audit logs — with `now()`-relative timestamps so the
+  data stays fresh. The test suite is unaffected: it stays fixture-driven
+  against the test database (created/dropped by vitest global setup).
 
 ## Distance in SQL (matching)
 
