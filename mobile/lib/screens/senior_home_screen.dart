@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/primary_button.dart';
 import 'agent_conversation_screen.dart';
-import 'login_email_screen.dart';
+import 'create_login_screen.dart';
 
 class SeniorHomeScreen extends StatelessWidget {
   const SeniorHomeScreen({super.key});
@@ -11,7 +11,7 @@ class SeniorHomeScreen extends StatelessWidget {
     // TODO: clear session/token before navigating away.
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (_) => const LoginEmailScreen()),
+      MaterialPageRoute(builder: (_) => const CreateLoginScreen()),
       (route) => false,
     );
   }

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'login_email_screen.dart';
+import 'create_login_screen.dart';
 import 'role_selection_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -25,7 +25,7 @@ class _SplashScreenState extends State<SplashScreen> {
       context,
       MaterialPageRoute(
         builder: (_) =>
-            _isLoggedIn ? const RoleSelectionScreen() : const LoginEmailScreen(),
+            _isLoggedIn ? const RoleSelectionScreen() : const CreateLoginScreen(),
       ),
     );
   }
