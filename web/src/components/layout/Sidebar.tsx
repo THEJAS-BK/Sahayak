@@ -1,10 +1,11 @@
 import React from 'react';
-import { LayoutDashboard, Users, AlertTriangle, ShieldCheck, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, AlertTriangle, ShieldCheck, Settings, LogOut, ListChecks } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
 export const Sidebar: React.FC = () => {
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
+    { icon: ListChecks, label: 'Requests', path: '/requests' },
     { icon: ShieldCheck, label: 'Verification', path: '/verification' },
     { icon: AlertTriangle, label: 'Emergencies', path: '/emergencies' },
     { icon: Users, label: 'Seniors', path: '/seniors' },

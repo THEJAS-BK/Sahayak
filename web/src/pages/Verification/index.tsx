@@ -9,8 +9,13 @@ import { Search } from 'lucide-react';
 export const Verification: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'All' | 'Senior' | 'Volunteer'>('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [records, setRecords] = useState(mockVerifications);
 
-  const filteredData = mockVerifications.filter((record) => {
+  const updateStatus = (id: string, status: 'APPROVED' | 'REJECTED') => {
+    setRecords(records.map((r) => (r.id === id ? { ...r, status } : r)));
+  };
+
+  const filteredData = records.filter((record) => {
     const matchesTab = activeTab === 'All' || record.role === activeTab;
     const matchesSearch = record.name.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTab && matchesSearch;
@@ -97,7 +102,14 @@ export const Verification: React.FC = () => {
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <Button variant="outline" size="sm">Review</Button>
+                  {record.status === 'PENDING' ? (
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <Button variant="outline" size="sm" onClick={() => updateStatus(record.id, 'APPROVED')}>Accept</Button>
+                      <Button variant="outline" size="sm" style={{ color: 'var(--color-status-error)' }} onClick={() => updateStatus(record.id, 'REJECTED')}>Reject</Button>
+                    </div>
+                  ) : (
+                    <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>—</span>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
