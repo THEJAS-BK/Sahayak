@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Microphone access for speech-to-text -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Network access for agent backend API calls -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="sahayak_mobile"
         android:name="${applicationName}"
