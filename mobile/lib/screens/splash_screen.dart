@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import '../services/api_client.dart';
+import '../services/session_service.dart';
 import 'create_login_screen.dart';
-import 'role_selection_screen.dart';
+import 'senior_home_screen.dart';
+import 'volunteer_home_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -10,24 +13,28 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  // TODO: replace with a real session check (e.g. flutter_secure_storage
-  // token lookup) once backend auth is wired up.
-  final bool _isLoggedIn = false;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _route());
   }
 
-  void _route() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            _isLoggedIn ? const RoleSelectionScreen() : const CreateLoginScreen(),
-      ),
-    );
+  Future<void> _route() async {
+    await SessionService.instance.restore();
+
+    Widget next = const CreateLoginScreen();
+    if (SessionService.instance.session != null) {
+      final refreshed = await ApiClient.instance.refresh();
+      final role = SessionService.instance.session?.role;
+      if (refreshed && role == 'volunteer') {
+        next = const VolunteerHomeScreen();
+      } else if (refreshed && role == 'senior') {
+        next = const SeniorHomeScreen();
+      }
+    }
+
+    if (!mounted) return;
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => next));
   }
 
   @override

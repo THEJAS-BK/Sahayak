@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../widgets/voice_call.dart';
 
 /// Placeholder UI for the voice-based agent conversation.
 /// Per the client design doc this flow is "to be finalized" — this screen
@@ -15,10 +16,14 @@ class AgentConversationScreen extends StatefulWidget {
 
 /// One chat bubble on the conversation screen.
 class _Message {
-  const _Message({required this.text, required this.fromAgent});
+  const _Message({required this.text, required this.fromAgent, this.isInterim = false});
 
   final String text;
   final bool fromAgent;
+
+  /// True while the agent is still speaking; the bubble shows partial text
+  /// until a finalised transcript replaces it.
+  final bool isInterim;
 }
 
 /// Quick-reply options offered right after the agent's greeting.
@@ -40,6 +45,10 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
   ];
   bool _showOptions = true;
 
+  /// Set once the live agent starts talking; drops the mock greeting/options
+  /// so the thread reflects the real conversation only.
+  bool _hasLiveTranscript = false;
+
   void _selectOption(String option) {
     setState(() {
       _showOptions = false;
@@ -49,6 +58,39 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
         fromAgent: true,
       ));
     });
+    _scrollToBottom();
+  }
+
+  /// Appends the agent's transcription from the voice channel. Interim chunks
+  /// render as a live bubble that gets replaced by the finalised text.
+  void _onAgentTranscript(String text, bool isFinal) {
+    setState(() {
+      if (!_hasLiveTranscript) {
+        _hasLiveTranscript = true;
+        _messages.clear();
+        _showOptions = false;
+      }
+
+      final idx = _messages.length - 1;
+      final lastIsAgentInterim =
+          _messages.isNotEmpty && _messages[idx].fromAgent && _messages[idx].isInterim;
+
+      if (isFinal) {
+        if (lastIsAgentInterim) {
+          _messages[idx] = _Message(text: text, fromAgent: true);
+        } else {
+          _messages.add(_Message(text: text, fromAgent: true));
+        }
+      } else if (lastIsAgentInterim) {
+        _messages[idx] = _Message(text: text, fromAgent: true, isInterim: true);
+      } else {
+        _messages.add(_Message(text: text, fromAgent: true, isInterim: true));
+      }
+    });
+    _scrollToBottom();
+  }
+
+  void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -84,6 +126,8 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
               ),
             ),
             if (_showOptions) _OptionsPanel(onSelect: _selectOption),
+            const Divider(height: 1),
+            VoiceCallControl(onTranscript: _onAgentTranscript),
           ],
         ),
       ),
@@ -111,10 +155,11 @@ class _MessageBubble extends StatelessWidget {
           border: isAgent ? Border.all(color: Colors.black12) : null,
         ),
         child: Text(
-          message.text,
+          message.isInterim && message.fromAgent ? '$message.text…' : message.text,
           style: TextStyle(
             fontSize: 18,
             color: isAgent ? Colors.black87 : Colors.white,
+            fontStyle: message.isInterim ? FontStyle.italic : FontStyle.normal,
           ),
         ),
       ),

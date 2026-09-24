@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import '../services/api_client.dart';
+import '../services/session_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/primary_button.dart';
 import 'role_selection_screen.dart';
+import 'senior_home_screen.dart';
+import 'volunteer_home_screen.dart';
 
 class OtpScreen extends StatefulWidget {
   final String email;
@@ -25,15 +29,52 @@ class _OtpScreenState extends State<OtpScreen> {
     }
 
     setState(() => _isVerifying = true);
-    // TODO: verify `code` against backend for widget.email.
-    await Future.delayed(const Duration(milliseconds: 400));
+    try {
+      final data = await ApiClient.instance
+          .post('/api/auth/otp/verify', body: {'email': widget.email, 'code': code});
+      final user = data['user'] is Map<String, dynamic> ? data['user'] as Map<String, dynamic> : {};
+      await SessionService.instance.save(Session(
+        accessToken: (data['access_token'] ?? '').toString(),
+        refreshToken: (data['refresh_token'] ?? '').toString().isEmpty
+            ? null
+            : (data['refresh_token'] ?? '').toString(),
+        userId: (user['id'] ?? '').toString(),
+        role: (user['role'] ?? '').toString(),
+        isActive: user['is_active'] as bool? ?? true,
+      ));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _isVerifying = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isVerifying = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not reach the server. Check your connection and try again.')),
+      );
+      return;
+    }
+    if (!mounted) return;
     setState(() => _isVerifying = false);
 
-    if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
-    );
+    final role = SessionService.instance.session?.role;
+    if (role == 'senior') {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const SeniorHomeScreen()),
+      );
+    } else if (role == 'volunteer') {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const VolunteerHomeScreen()),
+      );
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+      );
+    }
   }
 
   @override

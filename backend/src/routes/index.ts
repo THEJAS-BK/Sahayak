@@ -8,6 +8,7 @@ import volunteersRoutes from '../modules/volunteers/volunteers.routes.js'
 import policeRequestsRoutes from '../modules/police/requests.routes.js'
 import { emergencyRoutes, policeEmergencyRoutes } from '../modules/emergency/emergency.routes.js'
 import auditRoutes from '../modules/police/audit.routes.js'
+import voiceRoutes from '../modules/voice/voice.routes.js'
 
 const apiRouter = Router()
 
@@ -21,5 +22,6 @@ apiRouter.use('/police/requests', policeRequestsRoutes)
 apiRouter.use('/police/emergency-events', policeEmergencyRoutes)
 apiRouter.use('/emergency-events', emergencyRoutes)
 apiRouter.use('/audit-logs', auditRoutes)
+apiRouter.use('/voice-sessions', voiceRoutes)
 
 export default apiRouter

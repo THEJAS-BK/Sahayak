@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../services/api_client.dart';
+import '../services/session_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/primary_button.dart';
 import 'agent_conversation_screen.dart';
@@ -7,8 +9,17 @@ import 'create_login_screen.dart';
 class SeniorHomeScreen extends StatelessWidget {
   const SeniorHomeScreen({super.key});
 
-  void _logout(BuildContext context) {
-    // TODO: clear session/token before navigating away.
+  Future<void> _logout(BuildContext context) async {
+    try {
+      await ApiClient.instance.post(
+        '/api/auth/logout',
+        body: {'refresh_token': SessionService.instance.refreshToken ?? ''},
+      );
+    } catch (_) {
+      // best-effort; still clear the local session
+    }
+    await SessionService.instance.clear();
+    if (!context.mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const CreateLoginScreen()),
