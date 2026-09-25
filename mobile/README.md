@@ -9,6 +9,7 @@ Senior Citizen & Volunteer app. Screens map directly to the page flow in
 lib/
   main.dart                          entry point
   theme/app_theme.dart                colors, shared styling
+  models/help_request.dart            dummy volunteer request payloads
   widgets/primary_button.dart         reusable button
   screens/
     splash_screen.dart                "Already Logged In?" check
@@ -19,8 +20,10 @@ lib/
     senior_registration_screen.dart
     registration_submitted_screen.dart  shared "awaiting verification" page
     volunteer_home_screen.dart
+    request_detail_screen.dart        volunteer Accept / Decline
+    request_accepted_screen.dart      post-accept confirmation
     senior_home_screen.dart           "Click to Speak" entry point
-    agent_conversation_screen.dart    voice UI placeholder (flow TBD)
+    agent_conversation_screen.dart    voice + text + Dashboard exit
 ```
 
 Navigation currently uses plain `Navigator.push` / `MaterialPageRoute` — no
@@ -41,7 +44,8 @@ flutter run
 - Police-verification status polling (the "Simulate verification approved"
   button on the submitted screen is dev-only, remove before ship)
 - Voice-agent service integration on the agent conversation screen
-- Profile screen, requests list/detail screens on volunteer home
+- Profile screen on volunteer home
+- Real accept/decline API (volunteer flow is dummy UI for now)
 
 ## Scope reminder
 

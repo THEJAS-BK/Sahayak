@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../services/user_session.dart';
 import '../widgets/primary_button.dart';
 import 'role_selection_screen.dart';
+import 'volunteer_home_screen.dart';
+import 'senior_home_screen.dart';
 
 class OtpScreen extends StatefulWidget {
   final String email;
@@ -27,13 +30,34 @@ class _OtpScreenState extends State<OtpScreen> {
     setState(() => _isVerifying = true);
     // TODO: verify `code` against backend for widget.email.
     await Future.delayed(const Duration(milliseconds: 400));
-    setState(() => _isVerifying = false);
+
+    // Check if this user has already registered before.
+    final savedRole = await UserSession.getSavedRole();
 
     if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
-    );
+    setState(() => _isVerifying = false);
+
+    if (savedRole == 'volunteer') {
+      // Returning volunteer → skip role/registration/verification flow.
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const VolunteerHomeScreen()),
+        (route) => false,
+      );
+    } else if (savedRole == 'senior') {
+      // Returning senior → skip role/registration/verification flow.
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const SeniorHomeScreen()),
+        (route) => false,
+      );
+    } else {
+      // First-time user → go to role selection.
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+      );
+    }
   }
 
   @override
