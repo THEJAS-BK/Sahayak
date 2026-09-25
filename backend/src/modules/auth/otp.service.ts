@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { errors } from '../../lib/errors.js'
+import { config } from '../../config/index.js'
 import type { Queryable } from '../../database/pool.js'
 
 export const OTP_TTL_MS = 10 * 60 * 1000
@@ -12,6 +13,7 @@ export function normalizeEmail(email: string): string {
 }
 
 export function generateCode(): string {
+  if (!config.isProduction && config.otpDevCode) return config.otpDevCode
   return String(crypto.randomInt(0, 1_000_000)).padStart(6, '0')
 }
 

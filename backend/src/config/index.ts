@@ -45,6 +45,11 @@ const rawEnv = z
     SMTP_FROM: emptyToUndefined,
     SMTP_SECURE: emptyToUndefined,
     FCM_SERVICE_ACCOUNT_JSON: emptyToUndefined,
+    OTP_DEV_CODE: emptyToUndefined,
+    LIVEKIT_URL: emptyToUndefined,
+    LIVEKIT_API_KEY: emptyToUndefined,
+    LIVEKIT_API_SECRET: emptyToUndefined,
+    LIVEKIT_TOKEN_TTL_SECONDS: intFromEnv(300),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== 'production') return
@@ -116,6 +121,13 @@ export const config = {
     typeof env.FCM_SERVICE_ACCOUNT_JSON === 'string' && env.FCM_SERVICE_ACCOUNT_JSON.length > 0
       ? env.FCM_SERVICE_ACCOUNT_JSON
       : null,
+  otpDevCode: typeof env.OTP_DEV_CODE === 'string' ? env.OTP_DEV_CODE : null,
+  livekit: {
+    url: typeof env.LIVEKIT_URL === 'string' ? env.LIVEKIT_URL : '',
+    apiKey: typeof env.LIVEKIT_API_KEY === 'string' ? env.LIVEKIT_API_KEY : '',
+    apiSecret: typeof env.LIVEKIT_API_SECRET === 'string' ? env.LIVEKIT_API_SECRET : '',
+    tokenTtlS: env.LIVEKIT_TOKEN_TTL_SECONDS,
+  },
 } as const
 
 export type Config = typeof config
