@@ -1,0 +1,47 @@
+{
+  "name": "sahayak-backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:start": "bash scripts/dev-db.sh",
+    "db:migrate": "tsx scripts/migrate.ts up",
+    "db:down": "tsx scripts/migrate.ts down",
+    "db:reset": "tsx scripts/migrate.ts reset",
+    "db:seed": "tsx scripts/seed.ts",
+    "db:seed:fresh": "tsx scripts/seed.ts --fresh"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "firebase-admin": "^14.4.0",
+    "jsonwebtoken": "^9.0.3",
+    "node-cron": "^4.6.0",
+    "node-pg-migrate": "^9.0.0",
+    "nodemailer": "^10.0.10",
+    "pg": "^8.23.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^26.5.1",
+    "@types/nodemailer": "^8.0.2",
+    "@types/pg": "^8.23.1",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.2.2",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.1"
+  }
+}

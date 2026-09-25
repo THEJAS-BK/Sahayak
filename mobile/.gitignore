@@ -1,0 +1,66 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub/
+.pub-cache/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Build output
+build/
+
+# Generated files
+*.g.dart
+*.freezed.dart
+
+# Android
+.gradle/
+android/.gradle/
+android/app/debug/
+android/app/profile/
+android/app/release/
+android/local.properties
+android/key.properties
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/ephemeral/
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/**/*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+ios/**/*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+ios/**/*.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+ios/**/*.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+
+# macOS
+macos/Pods/
+macos/Flutter/ephemeral/
+macos/Flutter/Generated.xcconfig
+macos/**/*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+macos/**/*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+macos/**/*.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+macos/**/*.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+
+# Web
+web/flutter_service_worker.js
+web/flutter_bootstrap.js
+
+# IDE / editors
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Coverage
+coverage/

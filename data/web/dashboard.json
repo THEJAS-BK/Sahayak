@@ -1,0 +1,36 @@
+{
+  "summary": {
+    "open_requests": 5,
+    "pending_requests": 2,
+    "active_operations": 1,
+    "completed_requests": 6,
+    "unassigned_requests": 1,
+    "urgent_requests": 3,
+    "pending_verifications": 3
+  },
+  "open_request_breakdown": {
+    "PENDING": 1,
+    "MATCHING": 1,
+    "DISPATCHED": 2,
+    "ACCEPTED": 0,
+    "IN_PROGRESS": 1
+  },
+  "priority_overview": {
+    "normal": 10,
+    "urgent": 3
+  },
+  "latest_open_requests": [
+    { "id": "req-1024", "category": "grocery_assistance", "status": "IN_PROGRESS", "priority": "NORMAL", "senior": "Anitha Devi" },
+    { "id": "req-1023", "category": "medical_assistance", "status": "DISPATCHED", "priority": "URGENT", "senior": "Lakshmi Shetty" },
+    { "id": "req-1022", "category": "transport_assistance", "status": "DISPATCHED", "priority": "NORMAL", "senior": "Ravi Kumar" },
+    { "id": "req-1021", "category": "medical_assistance", "status": "MATCHING", "priority": "URGENT", "senior": "Meenakshi Bhat" },
+    { "id": "req-1020", "category": "grocery_assistance", "status": "PENDING", "priority": "NORMAL", "senior": "Ganesh Rao" }
+  ],
+  "recent_activity": [
+    { "timestamp": "2026-09-17T19:05:00Z", "actor": "System", "action": "request.dispatched", "entity": "req-1023" },
+    { "timestamp": "2026-09-17T18:59:00Z", "actor": "Officer Ashok Kini", "action": "verification.approved", "entity": "ver-0002" },
+    { "timestamp": "2026-09-17T18:57:00Z", "actor": "Karthik Shetty", "action": "request.accepted", "entity": "req-1024" },
+    { "timestamp": "2026-09-17T18:42:00Z", "actor": "Anitha Devi", "action": "request.created", "entity": "req-1024" },
+    { "timestamp": "2026-09-17T18:41:00Z", "actor": "Anitha Devi", "action": "emergency.logged", "entity": "evt-0001" }
+  ]
+}
