@@ -1,20 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:permission_handler/permission_handler.dart';
 
 import '../services/agent_service.dart';
+import '../services/api_client.dart';
 import '../theme/app_colors.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/text_input_bar.dart';
+import '../widgets/voice_call.dart';
 
 /// Voice-based agent conversation screen.
 ///
-/// Supports both voice input (on-device STT via [speech_to_text]) and
-/// freeform text input.  Both paths share the same [AgentService] instance
-/// and conversation history.
+/// The big mic button drives a real LiveKit voice call via
+/// [VoiceCallController]: it POSTs `/api/voice-sessions` for a room token,
+/// connects to the room and streams the agent's speech back as transcript
+/// [ChatBubble]s. When the agent records a help request it is published over
+/// the `sahayak_request` data channel, which this screen forwards to
+/// `POST /api/requests`.
 ///
-/// The backend `/api/agent/chat` endpoint is not yet live; any network call
-/// will surface a user-friendly error banner with a Retry button.
+/// The text input below is an independent fallback that talks to the
+/// `/api/agent/chat` endpoint (may not be live yet) and surfaces a friendly
+/// error via [_showError].
 class AgentConversationScreen extends StatefulWidget {
   const AgentConversationScreen({super.key});
 
@@ -25,15 +29,14 @@ class AgentConversationScreen extends StatefulWidget {
 
 class _AgentConversationScreenState extends State<AgentConversationScreen> {
   // ── Services ─────────────────────────────────────────────────────────────
+  late final VoiceCallController _voice;
   final AgentService _agentService = AgentService();
-  final stt.SpeechToText _speech = stt.SpeechToText();
 
   // ── State ─────────────────────────────────────────────────────────────────
   ConversationState _convState = ConversationState.idle;
-  bool _speechAvailable = false;
 
-  /// Populated when STT fails so the UI shows a helper banner.
-  String? _sttHelperText;
+  /// Voice-call helper banner (permission errors, session failures, ...).
+  String? _voiceHelperText;
 
   /// Non-null when there is an error to display in the error banner.
   String? _errorMessage;
@@ -49,7 +52,11 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
   @override
   void initState() {
     super.initState();
-    _initSpeech();
+    _voice = VoiceCallController(
+      onTranscript: _onAgentTranscript,
+      onSahayakRequest: _onSahayakRequest,
+      onMessage: _showError,
+    )..addListener(_onVoiceChanged);
     // Seed with greeting
     _messages = [
       Message(
@@ -60,112 +67,79 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
     ];
   }
 
-  Future<void> _initSpeech() async {
-    _speechAvailable = await _speech.initialize(
-      onError: (e) => _onSttError(e.errorMsg),
-      onStatus: (status) {
-        if (status == 'done' || status == 'notListening') {
-          _onSttDone();
-        }
-      },
-    );
-    if (mounted) setState(() {});
-  }
-
-  // ── Voice flow ─────────────────────────────────────────────────────────────
-
-  Future<void> _onMicTap() async {
-    // Clear error banner on any new interaction
-    setState(() => _errorMessage = null);
-
-    if (_convState == ConversationState.listening) {
-      await _stopListening();
-      return;
-    }
-
-    // Request mic permission
-    final status = await Permission.microphone.request();
-    if (!status.isGranted) {
-      _showError('Microphone permission denied. '
-          'Please enable it in Settings to use voice input.');
-      return;
-    }
-
-    if (!_speechAvailable) {
-      setState(() {
-        _sttHelperText =
-            "Couldn't hear you — voice recognition is not available on this "
-            "device. Type your message below.";
-      });
-      return;
-    }
-
-    setState(() {
-      _convState = ConversationState.listening;
-      _sttHelperText = null;
-      _textCtrl.clear();
-    });
-
-    await _speech.listen(
-      onResult: (result) {
-        _textCtrl.text = result.recognizedWords;
-        // Move cursor to end
-        _textCtrl.selection = TextSelection.fromPosition(
-          TextPosition(offset: _textCtrl.text.length),
-        );
-      },
-      listenOptions: stt.SpeechListenOptions(
-        listenFor: const Duration(seconds: 30),
-        pauseFor: const Duration(seconds: 3),
-        partialResults: true,
-        localeId: 'en_US',
-      ),
-    );
-  }
-
-  Future<void> _stopListening() async {
-    await _speech.stop();
-    setState(() => _convState = ConversationState.transcribing);
-    // Give the result callback a frame to fire before transitioning
-    await Future.delayed(const Duration(milliseconds: 200));
-    if (mounted) {
-      setState(() {
-        _convState = ConversationState.idle;
-        if (_textCtrl.text.isEmpty) {
-          _sttHelperText =
-              "Couldn't hear you — type your message below.";
-        }
-      });
-    }
-  }
-
-  void _onSttDone() {
-    if (_convState == ConversationState.listening && mounted) {
-      _stopListening();
-    }
-  }
-
-  void _onSttError(String msg) {
+  void _onVoiceChanged() {
     if (!mounted) return;
     setState(() {
-      _convState = ConversationState.idle;
-      _sttHelperText =
-          'Voice recognition error — type your message below.\n($msg)';
+      _convState = switch (_voice.state) {
+        CallState.connecting => ConversationState.transcribing,
+        CallState.listening ||
+        CallState.agentSpeaking =>
+          ConversationState.listening,
+        CallState.idle || CallState.disconnected => ConversationState.idle,
+      };
     });
   }
 
-  // ── Send flow ──────────────────────────────────────────────────────────────
+  // ── LiveKit voice flow ────────────────────────────────────────────────────
+
+  Future<void> _onMicTap() async {
+    setState(() => _errorMessage = null);
+    await _voice.toggle();
+  }
+
+  /// Streams the agent's transcribed speech into the transcript list.
+  /// Interim (`isFinal == false`) chunks replace the trailing agent bubble so
+  /// the text fills in live; the final chunk locks it in place.
+  void _onAgentTranscript(String text, bool isFinal) {
+    if (!mounted) return;
+    setState(() {
+      if (_messages.isNotEmpty && _messages.last.isAgent) {
+        final last = _messages.last;
+        _messages[_messages.length - 1] = last.copyWith(text: text);
+      } else {
+        _messages.add(Message(
+          text: text,
+          role: MessageRole.agent,
+          timestamp: DateTime.now(),
+        ));
+      }
+    });
+    _scrollToBottom();
+  }
+
+  /// The agent published a structured help request over the data channel —
+  /// forward it to the backend on the senior's behalf.
+  Future<void> _onSahayakRequest(Map<String, dynamic> request) async {
+    if (!mounted) return;
+    try {
+      await ApiClient.instance.post('/api/requests', body: request);
+      if (!mounted) return;
+      setState(() {
+        _messages.add(Message(
+          text: 'Got it — your request is recorded. A volunteer will be in '
+              'touch shortly.',
+          role: MessageRole.agent,
+          timestamp: DateTime.now(),
+        ));
+      });
+      _scrollToBottom();
+    } on ApiException catch (e) {
+      _showError('Could not submit your request: ${e.message}');
+    } catch (_) {
+      _showError('Could not submit your request. Please try again.');
+    }
+  }
+
+  // ── Text fallback flow ────────────────────────────────────────────────────
 
   Future<void> _onSend() async {
     final text = _textCtrl.text.trim();
     if (text.isEmpty) return;
 
     _textCtrl.clear();
-    _sttHelperText = null;
     setState(() {
       _convState = ConversationState.awaitingReply;
       _errorMessage = null;
-      // Append user message immediately (service does the same internally)
       _messages = [
         ..._agentService.history,
         Message(
@@ -225,7 +199,8 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
 
   @override
   void dispose() {
-    _speech.stop();
+    _voice.removeListener(_onVoiceChanged);
+    _voice.dispose();
     _agentService.dispose();
     _textCtrl.dispose();
     _textFocus.dispose();
@@ -239,6 +214,7 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
   Widget build(BuildContext context) {
     final isBusy = _convState == ConversationState.awaitingReply ||
         _convState == ConversationState.transcribing;
+    final isListening = _convState == ConversationState.listening;
 
     return Scaffold(
       backgroundColor: AppColors.scaffold,
@@ -345,7 +321,21 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Mic button
+                  // Voice-session helper text (permission / errors)
+                  if (_voiceHelperText != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: Text(
+                        _voiceHelperText!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+
+                  // Mic button — drives the LiveKit voice call
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 20),
                     child: MicButton(
@@ -360,10 +350,10 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
                     focusNode: _textFocus,
                     onSend: isBusy ? () {} : _onSend,
                     isBusy: isBusy,
-                    hintText: _convState == ConversationState.listening
+                    hintText: isListening
                         ? 'Listening… speak now'
                         : 'Or type a message…',
-                    helperText: _sttHelperText,
+                    helperText: null,
                   ),
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
