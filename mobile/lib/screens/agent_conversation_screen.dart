@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
-import '../services/api_client.dart';
-import '../theme/app_theme.dart';
-import '../widgets/voice_call.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:permission_handler/permission_handler.dart';
 
-/// Placeholder UI for the voice-based agent conversation.
-/// Per the client design doc this flow is "to be finalized" — this screen
-/// is a starting point to unblock integration with Vishnu/Shashank's
-/// voice-agent service, not a final design.
+import '../services/agent_service.dart';
+import '../theme/app_colors.dart';
+import '../widgets/chat_bubble.dart';
+import '../widgets/text_input_bar.dart';
+
+/// Voice-based agent conversation screen.
+///
+/// Supports both voice input (on-device STT via [speech_to_text]) and
+/// freeform text input.  Both paths share the same [AgentService] instance
+/// and conversation history.
+///
+/// The backend `/api/agent/chat` endpoint is not yet live; any network call
+/// will surface a user-friendly error banner with a Retry button.
 class AgentConversationScreen extends StatefulWidget {
   const AgentConversationScreen({super.key});
 
@@ -15,195 +23,362 @@ class AgentConversationScreen extends StatefulWidget {
       _AgentConversationScreenState();
 }
 
-/// One chat bubble on the conversation screen.
-class _Message {
-  const _Message(
-      {required this.text, required this.fromAgent, this.isInterim = false});
-
-  final String text;
-  final bool fromAgent;
-
-  /// True while the agent is still speaking; the bubble shows partial text
-  /// until a finalised transcript replaces it.
-  final bool isInterim;
-}
-
-/// Quick-reply options offered right after the agent's greeting.
-/// Replace with real agent output later.
-const List<String> _agentOptions = [
-  'I need groceries',
-  'I need medicine',
-  'I need help with travel',
-  'Something else',
-];
-
 class _AgentConversationScreenState extends State<AgentConversationScreen> {
-  final ScrollController _scrollController = ScrollController();
-  final List<_Message> _messages = [
-    const _Message(
-      text: 'Welcome to Sahayak. How can I help you today?',
-      fromAgent: true,
-    ),
-  ];
-  bool _showOptions = true;
+  // ── Services ─────────────────────────────────────────────────────────────
+  final AgentService _agentService = AgentService();
+  final stt.SpeechToText _speech = stt.SpeechToText();
 
-  /// Set once the live agent starts talking; drops the mock greeting/options
-  /// so the thread reflects the real conversation only.
-  bool _hasLiveTranscript = false;
+  // ── State ─────────────────────────────────────────────────────────────────
+  ConversationState _convState = ConversationState.idle;
+  bool _speechAvailable = false;
 
-  /// Senior's home coordinates, cached from GET /api/me (agent has no GPS).
-  (double, double)? _home;
+  /// Populated when STT fails so the UI shows a helper banner.
+  String? _sttHelperText;
 
-  void _selectOption(String option) {
-    setState(() {
-      _showOptions = false;
-      _messages.add(_Message(text: option, fromAgent: false));
-      _messages.add(const _Message(
-        text: 'Okay, tell me a bit more about what you need.',
-        fromAgent: true,
-      ));
-    });
-    _scrollToBottom();
+  /// Non-null when there is an error to display in the error banner.
+  String? _errorMessage;
+
+  // ── Text input ─────────────────────────────────────────────────────────────
+  final TextEditingController _textCtrl = TextEditingController();
+  final FocusNode _textFocus = FocusNode();
+  final ScrollController _scrollCtrl = ScrollController();
+
+  // ── Conversation history snapshot (updated after each send) ───────────────
+  List<Message> _messages = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _initSpeech();
+    // Seed with greeting
+    _messages = [
+      Message(
+        text: 'Hello! How can I help you today?',
+        role: MessageRole.agent,
+        timestamp: DateTime.now(),
+      ),
+    ];
   }
 
-  /// Structured help request published by the agent over the data channel →
-  /// POST /api/requests with the senior's home coordinates.
-  Future<void> _onSahayakRequest(Map<String, dynamic> request) async {
+  Future<void> _initSpeech() async {
+    _speechAvailable = await _speech.initialize(
+      onError: (e) => _onSttError(e.errorMsg),
+      onStatus: (status) {
+        if (status == 'done' || status == 'notListening') {
+          _onSttDone();
+        }
+      },
+    );
+    if (mounted) setState(() {});
+  }
+
+  // ── Voice flow ─────────────────────────────────────────────────────────────
+
+  Future<void> _onMicTap() async {
+    // Clear error banner on any new interaction
+    setState(() => _errorMessage = null);
+
+    if (_convState == ConversationState.listening) {
+      await _stopListening();
+      return;
+    }
+
+    // Request mic permission
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) {
+      _showError('Microphone permission denied. '
+          'Please enable it in Settings to use voice input.');
+      return;
+    }
+
+    if (!_speechAvailable) {
+      setState(() {
+        _sttHelperText =
+            "Couldn't hear you — voice recognition is not available on this "
+            "device. Type your message below.";
+      });
+      return;
+    }
+
     setState(() {
-      if (!_hasLiveTranscript) {
-        _hasLiveTranscript = true;
-        _messages.clear();
-        _showOptions = false;
-      }
+      _convState = ConversationState.listening;
+      _sttHelperText = null;
+      _textCtrl.clear();
     });
+
+    await _speech.listen(
+      onResult: (result) {
+        _textCtrl.text = result.recognizedWords;
+        // Move cursor to end
+        _textCtrl.selection = TextSelection.fromPosition(
+          TextPosition(offset: _textCtrl.text.length),
+        );
+      },
+      listenOptions: stt.SpeechListenOptions(
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 3),
+        partialResults: true,
+        localeId: 'en_US',
+      ),
+    );
+  }
+
+  Future<void> _stopListening() async {
+    await _speech.stop();
+    setState(() => _convState = ConversationState.transcribing);
+    // Give the result callback a frame to fire before transitioning
+    await Future.delayed(const Duration(milliseconds: 200));
+    if (mounted) {
+      setState(() {
+        _convState = ConversationState.idle;
+        if (_textCtrl.text.isEmpty) {
+          _sttHelperText =
+              "Couldn't hear you — type your message below.";
+        }
+      });
+    }
+  }
+
+  void _onSttDone() {
+    if (_convState == ConversationState.listening && mounted) {
+      _stopListening();
+    }
+  }
+
+  void _onSttError(String msg) {
+    if (!mounted) return;
+    setState(() {
+      _convState = ConversationState.idle;
+      _sttHelperText =
+          'Voice recognition error — type your message below.\n($msg)';
+    });
+  }
+
+  // ── Send flow ──────────────────────────────────────────────────────────────
+
+  Future<void> _onSend() async {
+    final text = _textCtrl.text.trim();
+    if (text.isEmpty) return;
+
+    _textCtrl.clear();
+    _sttHelperText = null;
+    setState(() {
+      _convState = ConversationState.awaitingReply;
+      _errorMessage = null;
+      // Append user message immediately (service does the same internally)
+      _messages = [
+        ..._agentService.history,
+        Message(
+          text: text,
+          role: MessageRole.user,
+          timestamp: DateTime.now(),
+        ),
+      ];
+    });
+    _scrollToBottom();
+
+    // Add pending agent bubble
+    final pendingIdx = _agentService.addPendingAgent();
+    setState(() {
+      _messages = List.from(_agentService.history);
+    });
+    _scrollToBottom();
 
     try {
-      final (lat, lng) = await _homeCoords();
-
-      final payload = <String, dynamic>{
-        'category': (request['category'] ?? 'other').toString(),
-        'description': (request['description'] ?? '').toString(),
-        'priority': (request['priority'] ?? 'normal').toString(),
-        'latitude': lat,
-        'longitude': lng,
-        'source': 'voice_agent',
-      };
-      final details = request['details'];
-      if (details != null && details.toString().isNotEmpty) {
-        payload['details'] =
-            details is Map ? details : <String, dynamic>{'note': details.toString()};
-      }
-
-      await ApiClient.instance.post('/api/requests', body: payload);
-
-      if (!mounted) return;
-      setState(() {
-        _messages.add(const _Message(
-          text:
-              'Your help request has been logged. A volunteer will be in touch shortly.',
-          fromAgent: true,
-        ));
-      });
-      _scrollToBottom();
-    } on ApiException catch (e) {
+      final reply = await _agentService.sendText(text);
+      _agentService.resolvePendingAgent(pendingIdx, reply);
+    } on AgentServiceException catch (e) {
+      _agentService.removePendingAgent(pendingIdx);
       _showError(e.message);
-    } catch (_) {
-      _showError(
-          'Could not send your request. Check your connection and try again.');
+    } catch (e) {
+      _agentService.removePendingAgent(pendingIdx);
+      _showError('An unexpected error occurred: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _convState = ConversationState.idle;
+          _messages = List.from(_agentService.history);
+        });
+        _scrollToBottom();
+      }
     }
   }
 
-  Future<(double, double)> _homeCoords() async {
-    final cached = _home;
-    if (cached != null) return cached;
-
-    final me = await ApiClient.instance.get('/api/me');
-    final profile = me['profile'];
-    double lat = 0, lng = 0;
-    if (profile is Map<String, dynamic>) {
-      lat = (profile['home_latitude'] as num?)?.toDouble() ?? 0;
-      lng = (profile['home_longitude'] as num?)?.toDouble() ?? 0;
-    }
-    _home = (lat, lng);
-    return _home!;
-  }
-
-  void _showError(String message) {
+  void _showError(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  /// Appends the agent's transcription from the voice channel. Interim chunks
-  /// render as a live bubble that gets replaced by the finalised text.
-  void _onAgentTranscript(String text, bool isFinal) {
-    setState(() {
-      if (!_hasLiveTranscript) {
-        _hasLiveTranscript = true;
-        _messages.clear();
-        _showOptions = false;
-      }
-
-      final idx = _messages.length - 1;
-      final lastIsAgentInterim = _messages.isNotEmpty &&
-          _messages[idx].fromAgent &&
-          _messages[idx].isInterim;
-
-      if (isFinal) {
-        if (lastIsAgentInterim) {
-          _messages[idx] = _Message(text: text, fromAgent: true);
-        } else {
-          _messages.add(_Message(text: text, fromAgent: true));
-        }
-      } else if (lastIsAgentInterim) {
-        _messages[idx] = _Message(text: text, fromAgent: true, isInterim: true);
-      } else {
-        _messages.add(_Message(text: text, fromAgent: true, isInterim: true));
-      }
-    });
-    _scrollToBottom();
+    setState(() => _errorMessage = msg);
   }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 250),
+      if (_scrollCtrl.hasClients) {
+        _scrollCtrl.animateTo(
+          _scrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
       }
     });
   }
 
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
+
   @override
   void dispose() {
-    _scrollController.dispose();
+    _speech.stop();
+    _agentService.dispose();
+    _textCtrl.dispose();
+    _textFocus.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
+  // ── Build ──────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
+    final isBusy = _convState == ConversationState.awaitingReply ||
+        _convState == ConversationState.transcribing;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Talk to Sahayak')),
+      backgroundColor: AppColors.scaffold,
+      appBar: AppBar(
+        backgroundColor: AppColors.navyDark,
+        elevation: 0,
+        // ← Back arrow — takes the senior back to the dashboard
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+              color: Colors.white, size: 20),
+          tooltip: 'Back to Dashboard',
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Sahayak',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            Text(
+              'Talk to Sahayak',
+              style: TextStyle(
+                color: Color(0xFF94A3B8),
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
+        // "Dashboard" pill button on the right
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: TextButton.icon(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.home_rounded,
+                  color: Colors.white, size: 18),
+              label: const Text(
+                'Dashboard',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.white.withAlpha(30),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(
+                      color: Colors.white.withAlpha(60), width: 1),
+                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [
+            // ── Error banner ────────────────────────────────────────────
+            if (_errorMessage != null) _ErrorBanner(
+              message: _errorMessage!,
+              onRetry: () {
+                setState(() => _errorMessage = null);
+                // Re-focus text field so user can easily type or retry
+                _textFocus.requestFocus();
+              },
+              onDismiss: () => setState(() => _errorMessage = null),
+            ),
+
+            // ── Transcript area ─────────────────────────────────────────
             Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(16),
-                itemCount: _messages.length,
-                itemBuilder: (context, index) {
-                  return _MessageBubble(message: _messages[index]);
-                },
+              child: _messages.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'Conversation will appear here.',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                    )
+                  : ListView.separated(
+                      controller: _scrollCtrl,
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _messages.length,
+                      separatorBuilder: (_, __) =>
+                          const SizedBox(height: 10),
+                      itemBuilder: (_, i) =>
+                          ChatBubble(message: _messages[i]),
+                    ),
+            ),
+
+            // ── Mic + input panel ───────────────────────────────────────
+            Container(
+              color: AppColors.cardWhite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Mic button
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    child: MicButton(
+                      state: _convState,
+                      onTap: _onMicTap,
+                    ),
+                  ),
+
+                  // Text input bar (always visible)
+                  TextInputBar(
+                    controller: _textCtrl,
+                    focusNode: _textFocus,
+                    onSend: isBusy ? () {} : _onSend,
+                    isBusy: isBusy,
+                    hintText: _convState == ConversationState.listening
+                        ? 'Listening… speak now'
+                        : 'Or type a message…',
+                    helperText: _sttHelperText,
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Text(
+                      'Feeling done? Tap Dashboard above to return home.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            if (_showOptions) _OptionsPanel(onSelect: _selectOption),
-            const Divider(height: 1),
-            VoiceCallControl(
-                onTranscript: _onAgentTranscript,
-                onSahayakRequest: _onSahayakRequest),
           ],
         ),
       ),
@@ -211,74 +386,77 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
   }
 }
 
-class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+// ── Error banner ──────────────────────────────────────────────────────────────
 
-  final _Message message;
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({
+    required this.message,
+    required this.onRetry,
+    required this.onDismiss,
+  });
 
-  @override
-  Widget build(BuildContext context) {
-    final bool isAgent = message.fromAgent;
-    return Align(
-      alignment: isAgent ? Alignment.centerLeft : Alignment.centerRight,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        constraints: const BoxConstraints(maxWidth: 320),
-        decoration: BoxDecoration(
-          color: isAgent ? Colors.white : AppTheme.senior,
-          borderRadius: BorderRadius.circular(16),
-          border: isAgent ? Border.all(color: Colors.black12) : null,
-        ),
-        child: Text(
-          message.isInterim && message.fromAgent
-              ? '$message.text…'
-              : message.text,
-          style: TextStyle(
-            fontSize: 18,
-            color: isAgent ? Colors.black87 : Colors.white,
-            fontStyle: message.isInterim ? FontStyle.italic : FontStyle.normal,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _OptionsPanel extends StatelessWidget {
-  const _OptionsPanel({required this.onSelect});
-
-  final ValueChanged<String> onSelect;
+  final String message;
+  final VoidCallback onRetry;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final String option in _agentOptions)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => onSelect(option),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                    foregroundColor: AppTheme.senior,
-                    side: const BorderSide(color: AppTheme.senior, width: 1.5),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    textStyle: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w600),
-                  ),
-                  child: Text(option),
+    return Material(
+      color: AppColors.error.withAlpha(20),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 1),
+              child: Icon(
+                Icons.error_outline,
+                color: AppColors.error,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textPrimary,
+                  height: 1.4,
                 ),
               ),
             ),
-        ],
+            const SizedBox(width: 6),
+            // Retry
+            InkWell(
+              onTap: onRetry,
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Text(
+                  'Retry',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.accentBlue,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            // Dismiss
+            InkWell(
+              onTap: onDismiss,
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(
+                  Icons.close,
+                  size: 14,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

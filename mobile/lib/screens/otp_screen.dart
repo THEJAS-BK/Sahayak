@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import '../services/api_client.dart';
 import '../services/session_service.dart';
 import '../theme/app_theme.dart';
+import '../services/user_session.dart';
 import '../widgets/primary_button.dart';
 import 'role_selection_screen.dart';
-import 'senior_home_screen.dart';
 import 'volunteer_home_screen.dart';
+import 'senior_home_screen.dart';
 
 class OtpScreen extends StatefulWidget {
   final String email;
@@ -29,52 +30,31 @@ class _OtpScreenState extends State<OtpScreen> {
     }
 
     setState(() => _isVerifying = true);
-    try {
-      final data = await ApiClient.instance.post('/api/auth/otp/verify',
-          body: {'email': widget.email, 'code': code});
-      final user = data['user'] is Map<String, dynamic>
-          ? data['user'] as Map<String, dynamic>
-          : {};
-      await SessionService.instance.save(Session(
-        accessToken: (data['access_token'] ?? '').toString(),
-        refreshToken: (data['refresh_token'] ?? '').toString().isEmpty
-            ? null
-            : (data['refresh_token'] ?? '').toString(),
-        userId: (user['id'] ?? '').toString(),
-        role: (user['role'] ?? '').toString(),
-        isActive: user['is_active'] as bool? ?? true,
-      ));
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() => _isVerifying = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.message)));
-      return;
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _isVerifying = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text(
-                'Could not reach the server. Check your connection and try again.')),
-      );
-      return;
-    }
+    // TODO: verify `code` against backend for widget.email.
+    await Future.delayed(const Duration(milliseconds: 400));
+
+    // Check if this user has already registered before.
+    final savedRole = await UserSession.getSavedRole();
+
     if (!mounted) return;
     setState(() => _isVerifying = false);
 
-    final role = SessionService.instance.session?.role;
-    if (role == 'senior') {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const SeniorHomeScreen()),
-      );
-    } else if (role == 'volunteer') {
-      Navigator.pushReplacement(
+    if (savedRole == 'volunteer') {
+      // Returning volunteer → skip role/registration/verification flow.
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const VolunteerHomeScreen()),
+        (route) => false,
+      );
+    } else if (savedRole == 'senior') {
+      // Returning senior → skip role/registration/verification flow.
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const SeniorHomeScreen()),
+        (route) => false,
       );
     } else {
+      // First-time user → go to role selection.
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),

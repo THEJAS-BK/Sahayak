@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
+import '../theme/app_colors.dart';
 import '../widgets/primary_button.dart';
 import 'registration_submitted_screen.dart';
 
@@ -13,10 +13,10 @@ class VolunteerRegistrationScreen extends StatefulWidget {
 
 class _VolunteerRegistrationScreenState
     extends State<VolunteerRegistrationScreen> {
-  final _nameController = TextEditingController();
-  final _phoneController = TextEditingController();
+  final _nameController    = TextEditingController();
+  final _phoneController   = TextEditingController();
   final _aadhaarController = TextEditingController();
-  final _clubIdController = TextEditingController(); // optional
+  final _clubIdController  = TextEditingController(); // optional
 
   void _submit() {
     if (_nameController.text.trim().isEmpty ||
@@ -50,42 +50,174 @@ class _VolunteerRegistrationScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Volunteer Registration')),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: ListView(
-          children: [
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(labelText: 'Full Name'),
+      backgroundColor: AppColors.scaffold,
+      appBar: AppBar(
+        title: const Text('Volunteer Registration'),
+        backgroundColor: AppColors.navyDark,
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          // ── Info banner ─────────────────────────────────────────────
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.volunteer.withAlpha(20),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.volunteer.withAlpha(60)),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(labelText: 'Phone Number'),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline, color: AppColors.volunteer, size: 18),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Your details will be verified by local police before your account is activated.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.volunteer,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _aadhaarController,
-              keyboardType: TextInputType.number,
-              decoration:
-                  const InputDecoration(labelText: 'Aadhaar Card Number'),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _clubIdController,
-              decoration:
-                  const InputDecoration(labelText: 'Club ID (optional)'),
-            ),
-            const SizedBox(height: 24),
-            PrimaryButton(
-              label: 'Submit for verification',
-              color: AppTheme.volunteer,
-              onPressed: _submit,
-            ),
-          ],
-        ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // ── Personal info section ────────────────────────────────────
+          _SectionCard(
+            title: 'Personal Information',
+            icon: Icons.person_outline,
+            iconColor: AppColors.volunteer,
+            children: [
+              _FormField(
+                controller: _nameController,
+                label: 'Full Name',
+                icon: Icons.badge_outlined,
+                inputType: TextInputType.name,
+              ),
+              const SizedBox(height: 14),
+              _FormField(
+                controller: _phoneController,
+                label: 'Phone Number',
+                icon: Icons.phone_outlined,
+                inputType: TextInputType.phone,
+              ),
+              const SizedBox(height: 14),
+              _FormField(
+                controller: _aadhaarController,
+                label: 'Aadhaar Card Number',
+                icon: Icons.credit_card_outlined,
+                inputType: TextInputType.number,
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // ── Club/organisation section ────────────────────────────────
+          _SectionCard(
+            title: 'Organisation (Optional)',
+            icon: Icons.group_outlined,
+            iconColor: AppColors.accentBlue,
+            children: [
+              _FormField(
+                controller: _clubIdController,
+                label: 'Club / Organisation ID',
+                icon: Icons.numbers_outlined,
+                inputType: TextInputType.text,
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          PrimaryButton(
+            label: 'Submit for Verification',
+            color: AppColors.volunteer,
+            icon: Icons.send_outlined,
+            onPressed: _submit,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Shared form widgets ───────────────────────────────────────────────────────
+
+class _SectionCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Color iconColor;
+  final List<Widget> children;
+
+  const _SectionCard({
+    required this.title,
+    required this.icon,
+    required this.iconColor,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.cardWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: iconColor, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+class _FormField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final IconData icon;
+  final TextInputType inputType;
+
+  const _FormField({
+    required this.controller,
+    required this.label,
+    required this.icon,
+    required this.inputType,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      keyboardType: inputType,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, size: 18, color: AppColors.textSecondary),
       ),
     );
   }
