@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { errors } from '../../lib/errors.js'
 import { asyncHandler, ok } from '../../lib/http.js'
+import { logger } from '../../lib/logger.js'
 import { pool, withTransaction } from '../../database/pool.js'
 import { authenticate, requireActive, requireRole } from '../../middleware/auth.js'
 import { notifyDispatch, notifyRequestAccepted, notifyRequestStatus } from '../notifications/request.js'
@@ -37,6 +38,8 @@ router.post(
   asyncHandler(async (req, res) => {
     const parsed = createSchema.safeParse(req.body)
     if (!parsed.success) throw errors.badRequest('Invalid help request')
+
+    logger.info('[voice] help request', { userId: req.user!.id, request: parsed.data })
 
     const pending = await pool.query(
       `SELECT 1 FROM help_requests WHERE senior_id = $1 AND status IN ('PENDING','MATCHING','DISPATCHED','ACCEPTED','IN_PROGRESS') LIMIT 1`,

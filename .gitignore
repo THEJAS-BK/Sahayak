@@ -17,6 +17,10 @@ logs/
 npm-debug.log*
 pnpm-debug.log*
 
+# Python
+__pycache__/
+*.py[cod]
+
 # Flutter / Dart
 .dart_tool/
 .packages

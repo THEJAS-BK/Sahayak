@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/api_client.dart';
 import '../theme/app_theme.dart';
 import '../widgets/primary_button.dart';
 import 'otp_screen.dart';
@@ -30,8 +31,26 @@ class _EnterEmailScreenState extends State<EnterEmailScreen> {
     }
 
     setState(() => _isSubmitting = true);
-    // TODO: call backend to send OTP to `email`.
-    await Future.delayed(const Duration(milliseconds: 400));
+    try {
+      await ApiClient.instance
+          .post('/api/auth/otp/request', body: {'email': email});
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'Could not reach the server. Check your connection and try again.')),
+      );
+      return;
+    }
+    if (!mounted) return;
     setState(() => _isSubmitting = false);
 
     if (!mounted) return;

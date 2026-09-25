@@ -52,7 +52,7 @@ export const sentEmails: EmailMessage[] = []
 class LogOnlySender implements EmailSender {
   async send(message: EmailMessage): Promise<void> {
     sentEmails.push(message)
-    logger.info(`[mail:dev] to=${message.to} subject="${message.subject}"`)
+    logger.info(`[mail:dev] to=${message.to} subject="${message.subject}" body="${message.text}"`)
   }
 }
 

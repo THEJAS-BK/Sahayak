@@ -1,12 +1,9 @@
 import React from 'react';
+import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 
-interface LayoutProps {
-  children: React.ReactNode;
-}
-
-export const Layout: React.FC<LayoutProps> = ({ children }) => {
+export const Layout: React.FC = () => {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', width: '100%' }}>
       <Sidebar />
@@ -14,7 +11,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         <Header />
         <main style={{ flex: 1, padding: '2rem', overflowY: 'auto' }}>
           <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-            {children}
+            <Outlet />
           </div>
         </main>
       </div>

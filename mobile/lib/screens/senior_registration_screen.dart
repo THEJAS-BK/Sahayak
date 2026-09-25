@@ -30,7 +30,8 @@ class _SeniorRegistrationScreenState extends State<SeniorRegistrationScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => const RegistrationSubmittedScreen(role: UserRole.senior),
+        builder: (_) =>
+            const RegistrationSubmittedScreen(role: UserRole.senior),
       ),
     );
   }

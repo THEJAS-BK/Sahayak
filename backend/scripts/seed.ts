@@ -104,7 +104,7 @@ const POLICE = {
 const SENIORS: SeniorSeed[] = [
   {
     key: 'anitha',
-    email: 'anitha.dev@example.com',
+    email: 'test@example.com',
     full_name: 'Anitha Devi',
     phone_number: '+919876500001',
     home_latitude: 13.161,

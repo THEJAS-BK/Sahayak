@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/Table';
-import { mockRequests, type RequestPriority, type RequestStatus } from '../../data/mock';
+import { fetchPoliceRequests } from '../../api/client';
+import { priorityLabel, type PoliceRequest, type RequestStatus } from '../../api/types';
 import { Search } from 'lucide-react';
 
 const statusBadgeVariant: Record<RequestStatus, 'success' | 'warning' | 'error' | 'default'> = {
@@ -30,18 +31,34 @@ const formatDate = (iso: string) => new Date(iso).toLocaleString(undefined, {
 
 export const Requests: React.FC = () => {
   const navigate = useNavigate();
+  const [requests, setRequests] = useState<PoliceRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'All' | RequestStatus>('All');
-  const [priorityFilter, setPriorityFilter] = useState<'All' | RequestPriority>('All');
+  const [priorityFilter, setPriorityFilter] = useState<'All' | 'URGENT' | 'NORMAL'>('All');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const statuses: ('All' | RequestStatus)[] = ['All', 'PENDING', 'MATCHING', 'DISPATCHED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'UNASSIGNED'];
-  const priorities: ('All' | RequestPriority)[] = ['All', 'NORMAL', 'URGENT'];
+  useEffect(() => {
+    const params: Record<string, string> = {};
+    if (statusFilter !== 'All') params.status = statusFilter;
+    if (priorityFilter !== 'All') params.priority = priorityFilter === 'URGENT' ? 'urgent' : 'normal';
+    setLoading(true);
+    setError(null);
+    fetchPoliceRequests(params)
+      .then((result) => setRequests(result.requests))
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Failed to load requests');
+        setRequests([]);
+      })
+      .finally(() => setLoading(false));
+  }, [statusFilter, priorityFilter]);
 
-  const filtered = mockRequests.filter((req) => {
-    const matchesStatus = statusFilter === 'All' || req.status === statusFilter;
-    const matchesPriority = priorityFilter === 'All' || req.priority === priorityFilter;
-    const matchesSearch = req.senior.full_name.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesStatus && matchesPriority && matchesSearch;
+  const statuses: ('All' | RequestStatus)[] = ['All', 'PENDING', 'MATCHING', 'DISPATCHED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'UNASSIGNED'];
+  const priorities: ('All' | 'URGENT' | 'NORMAL')[] = ['All', 'URGENT', 'NORMAL'];
+
+  const filtered = requests.filter((req) => {
+    const matchesSearch = (req.senior.full_name ?? '').toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesSearch;
   });
 
   return (
@@ -72,7 +89,7 @@ export const Requests: React.FC = () => {
             </select>
             <select
               value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value as 'All' | RequestPriority)}
+              onChange={(e) => setPriorityFilter(e.target.value as 'All' | 'URGENT' | 'NORMAL')}
               style={{
                 padding: '0.5rem 0.75rem',
                 borderRadius: '0.375rem',
@@ -108,53 +125,61 @@ export const Requests: React.FC = () => {
           </div>
         </div>
 
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableHeader>ID</TableHeader>
-              <TableHeader>Senior</TableHeader>
-              <TableHeader>Category</TableHeader>
-              <TableHeader>Priority</TableHeader>
-              <TableHeader>Status</TableHeader>
-              <TableHeader>Assigned Volunteer</TableHeader>
-              <TableHeader>Created</TableHeader>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filtered.map((req) => (
-              <TableRow
-                key={req.id}
-                onClick={() => navigate(`/requests/${req.id}`)}
-                style={{ cursor: 'pointer' }}
-              >
-                <TableCell>
-                  <span style={{ fontWeight: 500, color: 'var(--color-text-secondary)' }}>{req.id}</span>
-                </TableCell>
-                <TableCell>
-                  <span style={{ fontWeight: 500 }}>{req.senior.full_name}</span>
-                </TableCell>
-                <TableCell>{categoryLabels[req.category] ?? req.category}</TableCell>
-                <TableCell>
-                  <Badge variant={req.priority === 'URGENT' ? 'error' : 'default'}>{req.priority}</Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={statusBadgeVariant[req.status]}>{req.status}</Badge>
-                </TableCell>
-                <TableCell>{req.assigned_volunteer?.full_name ?? '—'}</TableCell>
-                <TableCell style={{ color: 'var(--color-text-secondary)' }}>{formatDate(req.created_at)}</TableCell>
-              </TableRow>
-            ))}
-            {filtered.length === 0 && (
+        {loading && (
+          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-secondary)' }}>Loading requests…</div>
+        )}
+        {error && (
+          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-status-error)' }}>{error}</div>
+        )}
+        {!loading && !error && (
+          <Table>
+            <TableHead>
               <TableRow>
-                <TableCell>
-                  <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
-                    No requests found.
-                  </div>
-                </TableCell>
+                <TableHeader>ID</TableHeader>
+                <TableHeader>Senior</TableHeader>
+                <TableHeader>Category</TableHeader>
+                <TableHeader>Priority</TableHeader>
+                <TableHeader>Status</TableHeader>
+                <TableHeader>Assigned Volunteer</TableHeader>
+                <TableHeader>Created</TableHeader>
               </TableRow>
-            )}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {filtered.map((req) => (
+                <TableRow
+                  key={req.id}
+                  onClick={() => navigate(`/requests/${req.id}`)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <TableCell>
+                    <span style={{ fontWeight: 500, color: 'var(--color-text-secondary)' }}>{req.id}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span style={{ fontWeight: 500 }}>{req.senior.full_name ?? req.senior.email}</span>
+                  </TableCell>
+                  <TableCell>{categoryLabels[req.category] ?? req.category}</TableCell>
+                  <TableCell>
+                    <Badge variant={req.priority === 'urgent' ? 'error' : 'default'}>{priorityLabel(req.priority)}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={statusBadgeVariant[req.status]}>{req.status}</Badge>
+                  </TableCell>
+                  <TableCell>{req.assigned_volunteer?.full_name ?? '—'}</TableCell>
+                  <TableCell style={{ color: 'var(--color-text-secondary)' }}>{formatDate(req.created_at)}</TableCell>
+                </TableRow>
+              ))}
+              {filtered.length === 0 && (
+                <TableRow>
+                  <TableCell>
+                    <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
+                      No requests found.
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        )}
       </Card>
     </div>
   );
