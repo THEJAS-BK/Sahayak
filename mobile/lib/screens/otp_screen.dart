@@ -30,9 +30,11 @@ class _OtpScreenState extends State<OtpScreen> {
 
     setState(() => _isVerifying = true);
     try {
-      final data = await ApiClient.instance
-          .post('/api/auth/otp/verify', body: {'email': widget.email, 'code': code});
-      final user = data['user'] is Map<String, dynamic> ? data['user'] as Map<String, dynamic> : {};
+      final data = await ApiClient.instance.post('/api/auth/otp/verify',
+          body: {'email': widget.email, 'code': code});
+      final user = data['user'] is Map<String, dynamic>
+          ? data['user'] as Map<String, dynamic>
+          : {};
       await SessionService.instance.save(Session(
         accessToken: (data['access_token'] ?? '').toString(),
         refreshToken: (data['refresh_token'] ?? '').toString().isEmpty
@@ -45,13 +47,16 @@ class _OtpScreenState extends State<OtpScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _isVerifying = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
       return;
     } catch (_) {
       if (!mounted) return;
       setState(() => _isVerifying = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not reach the server. Check your connection and try again.')),
+        const SnackBar(
+            content: Text(
+                'Could not reach the server. Check your connection and try again.')),
       );
       return;
     }

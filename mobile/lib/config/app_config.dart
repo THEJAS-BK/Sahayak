@@ -12,7 +12,7 @@ class AppConfig {
 
   static const String _fromBuild = String.fromEnvironment('API_BASE_URL');
 
-static String get apiBaseUrl {
+  static String get apiBaseUrl {
     if (_fromBuild.isNotEmpty) {
       return _fromBuild;
     }

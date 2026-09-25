@@ -25,7 +25,8 @@ class Session {
         'isActive': isActive,
       };
 
-  factory Session.fromJson(Map<String, dynamic> json, {required String accessToken, String? refreshToken}) =>
+  factory Session.fromJson(Map<String, dynamic> json,
+          {required String accessToken, String? refreshToken}) =>
       Session(
         accessToken: accessToken,
         refreshToken: refreshToken,
@@ -85,7 +86,8 @@ class SessionService {
       }
     }
     _session = parsed ??
-        Session(accessToken: access, refreshToken: refresh, userId: '', role: '');
+        Session(
+            accessToken: access, refreshToken: refresh, userId: '', role: '');
     return _session;
   }
 

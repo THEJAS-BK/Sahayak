@@ -1,7 +1,17 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Bell, Search, User } from 'lucide-react';
+import { fetchCurrentUser } from '../../api/client';
+import type { CurrentUser } from '../../api/types';
 
 export const Header: React.FC = () => {
+  const [user, setUser] = useState<CurrentUser | null>(null);
+
+  useEffect(() => {
+    fetchCurrentUser()
+      .then((me) => setUser(me))
+      .catch(() => setUser(null));
+  }, []);
+
   return (
     <header style={{
       height: '72px',
@@ -43,7 +53,7 @@ export const Header: React.FC = () => {
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-text-primary)' }}>Admin User</div>
+            <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-text-primary)' }}>{user?.email ?? 'Police Officer'}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>Station HQ</div>
           </div>
           <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-secondary)' }}>

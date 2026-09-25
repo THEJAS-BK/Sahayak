@@ -143,3 +143,57 @@ transcription UI was added on top.
 4. **App** — open `mobile/` in Android Studio, start an emulator (or plug in a device), then `flutter run`. Emulator default reaches the backend via `http://10.0.2.2:3000`; a physical device needs `--dart-define=API_BASE_URL=http://<LAN-IP>:3000`. Web/desktop default to `http://localhost:3000`.
 5. **Login** — `test@example.com`, code is `123456` (dev-only). Senior Home → **Click to Speak** → **Start voice call** → grant mic permission → talk; the agent's speech streams into the chat transcript.
 6. Sandbox emulators available: `Medium_Phone`, `sahayak_test` (`flutter emulators --launch <id>`).
+
+## Iteration 3 — agent greeting + structured help request → backend print (as built)
+
+Goal: greeting on connect, then the agent captures a request after a few turns,
+publishes it to the app over the LiveKit data channel, the app POSTs it to
+`/api/requests`, and the backend prints it. (Full volunteer dispatch runs too —
+the request is created for real, but nothing beyond that is surfaced yet.)
+
+### Data contract (topic `sahayak_request`)
+Agent publishes JSON: `{ category, description, priority, details? }`.
+The app adds `latitude`/`longitude` (from the senior profile via `GET /api/me`)
+and `source: "voice_agent"`, then `POST /api/requests`.
+
+### Voice agent ✅ — `livekit-voice-agent/agent.py`
+- `Assistant.instructions` rewritten as a Sahayak persona (elderly-assistance,
+  allowed categories) and `async def on_enter()` speaks the greeting:
+  `"Welcome to Sahayak. How can I help you today?"` (called by AgentSession at connect).
+- New auto-discovered `@function_tool record_help_request(ctx, category,
+  description, priority='normal', details=None)` — the LLM invokes it once the
+  category + description are clear (usually after a few turns). The handler
+  `publish_data(json, topic="sahayak_request")` via
+  `ctx.session.room_io.room.local_participant`, then returns a confirmation the
+  agent speaks aloud. Verified: `uv run python -c "import agent"` — tool is in
+  `Assistant().tools` and `on_enter` is overridden.
+
+### Backend ✅ — `backend/src/modules/requests/requests.routes.ts`
+- `POST /` logs `logger.info('[voice] help request', { userId, request })` right
+  after schema validation — the "print for now" visibility. Request creation +
+  dispatch matching run unchanged.
+- End-to-end verified: OTP 123456 → `POST /api/requests` → created, log line
+  prints the payload; test row cancelled afterwards.
+
+### Dev DB ✅
+- BR-13 (`REQUEST_ALREADY_OPEN`) blocks a new request while an open one exists,
+  and every seeded senior had one — `psql` set `test@example.com`'s open
+  `help_requests` rows to `CANCELLED` (dev-only; re-run if reseeding with `--fresh`).
+
+### Mobile ✅
+- `lib/services/api_client.dart` — new `GET` method (Bearer + 401 refresh-retry,
+  same envelope handling as `post`). Needed for `GET /api/me`.
+- `lib/widgets/voice_call.dart` — `SahayakRequestCallback` typedef, `kSahayakRequestTopic`
+  const (`sahayak_request`), optional `onSahayakRequest`; `DataReceivedEvent`
+  listener filters by topic, decodes UTF-8 JSON, forwards to the callback.
+- `lib/screens/agent_conversation_screen.dart` — `_onSahayakRequest` lazily caches
+  home coords from `GET /api/me`, builds the payload (`source: voice_agent`),
+  `POST /api/requests` via `ApiClient`, appends a "request logged" agent bubble,
+  snackbar on failure. Drops the mock greeting/options like the transcript path.
+
+### Verification
+- Backend: `npm run typecheck` clean; `npm test` 55/55; live curl POST printed
+  `[voice] help request {...}` and returned `201` (request created).
+- Flutter: `flutter analyze` clean; `flutter test` pass.
+- End-to-end on device: runs the full chain — greeting → conversation → tool →
+  data channel → app POST → backend print (needs agent running + emulator).

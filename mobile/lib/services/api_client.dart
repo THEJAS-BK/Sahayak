@@ -72,6 +72,28 @@ class ApiClient {
     return _decode(response);
   }
 
+  Future<Map<String, dynamic>> get(String path) async {
+    final token = SessionService.instance.accessToken;
+
+    var response = await _http.get(
+      _uri(path),
+      headers: {if (token != null) 'Authorization': 'Bearer $token'},
+    ).timeout(_timeout);
+
+    if (response.statusCode == 401 && token != null && token.isNotEmpty) {
+      final refreshed = await refresh();
+      if (refreshed) {
+        final newToken = SessionService.instance.accessToken;
+        response = await _http.get(
+          _uri(path),
+          headers: {if (newToken != null) 'Authorization': 'Bearer $newToken'},
+        ).timeout(_timeout);
+      }
+    }
+
+    return _decode(response);
+  }
+
   /// Rotates the access token using the stored refresh token.
   /// Clears the session if the refresh token is invalid/expired.
   Future<bool> refresh() async {

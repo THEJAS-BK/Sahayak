@@ -69,7 +69,8 @@ class _VolunteerRegistrationScreenState
             TextField(
               controller: _aadhaarController,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Aadhaar Card Number'),
+              decoration:
+                  const InputDecoration(labelText: 'Aadhaar Card Number'),
             ),
             const SizedBox(height: 16),
             TextField(

@@ -30,7 +30,8 @@ class _SeniorRegistrationScreenState extends State<SeniorRegistrationScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => const RegistrationSubmittedScreen(role: UserRole.senior),
+        builder: (_) =>
+            const RegistrationSubmittedScreen(role: UserRole.senior),
       ),
     );
   }
@@ -65,7 +66,8 @@ class _SeniorRegistrationScreenState extends State<SeniorRegistrationScreen> {
             TextField(
               controller: _aadhaarController,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Aadhaar Card Number'),
+              decoration:
+                  const InputDecoration(labelText: 'Aadhaar Card Number'),
             ),
             const SizedBox(height: 24),
             PrimaryButton(

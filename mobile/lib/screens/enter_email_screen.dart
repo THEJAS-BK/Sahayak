@@ -32,17 +32,21 @@ class _EnterEmailScreenState extends State<EnterEmailScreen> {
 
     setState(() => _isSubmitting = true);
     try {
-      await ApiClient.instance.post('/api/auth/otp/request', body: {'email': email});
+      await ApiClient.instance
+          .post('/api/auth/otp/request', body: {'email': email});
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
       return;
     } catch (_) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not reach the server. Check your connection and try again.')),
+        const SnackBar(
+            content: Text(
+                'Could not reach the server. Check your connection and try again.')),
       );
       return;
     }

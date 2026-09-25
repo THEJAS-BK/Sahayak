@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -15,6 +16,12 @@ enum CallState { idle, connecting, listening, agentSpeaking, disconnected }
 /// live (interim) token stream for the utterance currently being spoken.
 typedef AgentTranscriptCallback = void Function(String text, bool isFinal);
 
+/// Topic the livekit agent publishes structured help requests on.
+const String kSahayakRequestTopic = 'sahayak_request';
+
+/// A structured help request published by the agent over the data channel.
+typedef SahayakRequestCallback = void Function(Map<String, dynamic> request);
+
 /// Mic/call toggle that drives a LiveKit voice session end-to-end:
 /// requests RECORD_AUDIO permission (mobile), POSTs /api/voice-sessions for a
 /// short-lived join token, connects to the room, publishes the local mic, and
@@ -29,9 +36,10 @@ typedef AgentTranscriptCallback = void Function(String text, bool isFinal);
 /// checks), so this also compiles for web — where it simply skips the
 /// permission step.
 class VoiceCallControl extends StatefulWidget {
-  const VoiceCallControl({super.key, this.onTranscript});
+  const VoiceCallControl({super.key, this.onTranscript, this.onSahayakRequest});
 
   final AgentTranscriptCallback? onTranscript;
+  final SahayakRequestCallback? onSahayakRequest;
 
   @override
   State<VoiceCallControl> createState() => _VoiceCallControlState();
@@ -51,7 +59,8 @@ class _VoiceCallControlState extends State<VoiceCallControl> {
     }
   }
 
-  bool get _isInCall => _state == CallState.listening || _state == CallState.agentSpeaking;
+  bool get _isInCall =>
+      _state == CallState.listening || _state == CallState.agentSpeaking;
 
   Future<void> _startCall() async {
     if (_busy) return;
@@ -72,7 +81,9 @@ class _VoiceCallControlState extends State<VoiceCallControl> {
       final url = session['url']?.toString() ?? '';
       final token = session['token']?.toString() ?? '';
       if (url.isEmpty || token.isEmpty) {
-        throw const ApiException(code: 'INVALID_RESPONSE', message: 'Voice session response was incomplete');
+        throw const ApiException(
+            code: 'INVALID_RESPONSE',
+            message: 'Voice session response was incomplete');
       }
 
       final room = Room();
@@ -139,24 +150,47 @@ class _VoiceCallControlState extends State<VoiceCallControl> {
         },
       )
       ..on<ActiveSpeakersChangedEvent>((event) async {
-        if (!mounted || _state == CallState.connecting || _state == CallState.idle) return;
+        if (!mounted ||
+            _state == CallState.connecting ||
+            _state == CallState.idle) {
+          return;
+        }
         final localIdentity = room.localParticipant?.identity;
-        final agentSpeaking = event.speakers.any((p) => p.identity != localIdentity);
-        setState(() => _state = agentSpeaking ? CallState.agentSpeaking : CallState.listening);
+        final agentSpeaking =
+            event.speakers.any((p) => p.identity != localIdentity);
+        setState(() => _state =
+            agentSpeaking ? CallState.agentSpeaking : CallState.listening);
       })
       ..on<TranscriptionEvent>((event) async {
-        if (event.participant.identity == room.localParticipant?.identity) return;
+        if (event.participant.identity == room.localParticipant?.identity) {
+          return;
+        }
         for (final segment in event.segments) {
           final text = segment.text.trim();
-          if (text.isEmpty) continue;
+          if (text.isEmpty) {
+            continue;
+          }
           widget.onTranscript?.call(text, segment.isFinal);
+        }
+      })
+      ..on<DataReceivedEvent>((event) async {
+        if (event.topic != kSahayakRequestTopic) return;
+        dynamic payload;
+        try {
+          payload = jsonDecode(utf8.decode(event.data));
+        } catch (_) {
+          return;
+        }
+        if (payload is Map<String, dynamic>) {
+          widget.onSahayakRequest?.call(payload);
         }
       });
   }
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -171,9 +205,17 @@ class _VoiceCallControlState extends State<VoiceCallControl> {
       case CallState.connecting:
         return (Icons.sync, AppTheme.postRegistration, 'Connecting...');
       case CallState.listening:
-        return (Icons.stop_circle_outlined, AppTheme.postRegistration, 'Tap to end the call');
+        return (
+          Icons.stop_circle_outlined,
+          AppTheme.postRegistration,
+          'Tap to end the call'
+        );
       case CallState.agentSpeaking:
-        return (Icons.stop_circle_outlined, AppTheme.senior, 'Tap to end the call');
+        return (
+          Icons.stop_circle_outlined,
+          AppTheme.senior,
+          'Tap to end the call'
+        );
       case CallState.disconnected:
         return (Icons.mic_none, AppTheme.senior, 'Call ended — start again');
       case CallState.idle:
@@ -203,10 +245,13 @@ class _VoiceCallControlState extends State<VoiceCallControl> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
                   )
                 : Icon(icon),
-            label: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            label: Text(label,
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -222,7 +267,10 @@ class _StatusLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (widget, text) = switch (state) {
-      CallState.idle => (const Icon(Icons.mic_none, size: 20, color: Colors.grey), 'Tap to start talking to Sahayak'),
+      CallState.idle => (
+          const Icon(Icons.mic_none, size: 20, color: Colors.grey),
+          'Tap to start talking to Sahayak'
+        ),
       CallState.connecting => (
           const Icon(Icons.sync, size: 20, color: AppTheme.postRegistration),
           'Connecting to the voice assistant...',
@@ -235,7 +283,10 @@ class _StatusLine extends StatelessWidget {
           const Icon(Icons.graphic_eq, size: 20, color: AppTheme.senior),
           'Agent is speaking...',
         ),
-      CallState.disconnected => (const Icon(Icons.call_end, size: 20, color: Colors.grey), 'Call ended'),
+      CallState.disconnected => (
+          const Icon(Icons.call_end, size: 20, color: Colors.grey),
+          'Call ended'
+        ),
     };
 
     return Row(
