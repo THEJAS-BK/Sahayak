@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../services/user_session.dart';
+import '../services/session_service.dart';
 import 'create_login_screen.dart';
 import 'volunteer_home_screen.dart';
 import 'senior_home_screen.dart';
@@ -41,19 +42,29 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.delayed(const Duration(milliseconds: 1400));
     if (!mounted) return;
 
-    // Check if the user has already completed registration.
-    final savedRole = await UserSession.getSavedRole();
+    // Prefer the real backend session if one is stored.
+    final session = await SessionService.instance.restore();
+    final role = session?.role;
 
     if (!mounted) return;
 
     Widget destination;
-    if (savedRole == 'volunteer') {
+    if (role == 'volunteer') {
       destination = const VolunteerHomeScreen();
-    } else if (savedRole == 'senior') {
+    } else if (role == 'senior') {
       destination = const SeniorHomeScreen();
     } else {
-      // First-time user — go through the full auth + registration flow.
-      destination = const CreateLoginScreen();
+      // Dev fallback — local session marker set by the registration flow.
+      final savedRole = await UserSession.getSavedRole();
+      if (!mounted) return;
+      if (savedRole == 'volunteer') {
+        destination = const VolunteerHomeScreen();
+      } else if (savedRole == 'senior') {
+        destination = const SeniorHomeScreen();
+      } else {
+        // First-time user — go through the full auth + registration flow.
+        destination = const CreateLoginScreen();
+      }
     }
 
     Navigator.pushReplacement(

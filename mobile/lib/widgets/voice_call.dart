@@ -22,57 +22,74 @@ const String kSahayakRequestTopic = 'sahayak_request';
 /// A structured help request published by the agent over the data channel.
 typedef SahayakRequestCallback = void Function(Map<String, dynamic> request);
 
-/// Mic/call toggle that drives a LiveKit voice session end-to-end:
+/// Non-UI engine that drives a LiveKit voice session end-to-end:
 /// requests RECORD_AUDIO permission (mobile), POSTs /api/voice-sessions for a
-/// short-lived join token, connects to the room, publishes the local mic, and
-/// reflects the agent's speaking state in the UI.
+/// short-lived join token, connects to the room, publishes the local mic and
+/// reflects the agent's speaking state in [state].
 ///
-/// When [onTranscript] is provided it is invoked for the agent's speech as it
-/// is published over the live transcription channel (`lk.transcription`):
-/// once per utterance with `isFinal=false` for interim chunks and once more
-/// with `isFinal=true` when the utterance is complete.
+/// The agent's speech arrives via [AgentTranscriptCallback] over the live
+/// transcription channel (`lk.transcription`) — once per utterance with
+/// `isFinal=false` interim chunks and a final `isFinal=true`. Structured help
+/// requests come over the data channel topic [kSahayakRequestTopic].
 ///
-/// All platform-specific code is gated behind `kIsWeb` (no bare `Platform.isX`
-/// checks), so this also compiles for web — where it simply skips the
-/// permission step.
-class VoiceCallControl extends StatefulWidget {
-  const VoiceCallControl({super.key, this.onTranscript, this.onSahayakRequest});
+/// Exposes [start] / [stop] so any UI (the chat screen's mic button, or the
+/// bundled [VoiceCallControl] widget) can drive the same call.
+class VoiceCallController extends ChangeNotifier {
+  VoiceCallController({
+    AgentTranscriptCallback? onTranscript,
+    SahayakRequestCallback? onSahayakRequest,
+    void Function(String message)? onMessage,
+  })  : _onTranscript = onTranscript,
+        _onSahayakRequest = onSahayakRequest,
+        _onMessage = onMessage;
 
-  final AgentTranscriptCallback? onTranscript;
-  final SahayakRequestCallback? onSahayakRequest;
+  final AgentTranscriptCallback? _onTranscript;
+  final SahayakRequestCallback? _onSahayakRequest;
+  final void Function(String message)? _onMessage;
 
-  @override
-  State<VoiceCallControl> createState() => _VoiceCallControlState();
-}
-
-class _VoiceCallControlState extends State<VoiceCallControl> {
   CallState _state = CallState.idle;
-  Room? _room;
-  EventsListener<RoomEvent>? _listener;
   bool _busy = false;
 
-  Future<void> _onToggle() async {
-    if (_isInCall || _state == CallState.connecting) {
-      await _endCall();
+  Room? _room;
+  EventsListener<RoomEvent>? _listener;
+
+  /// Current call state. Listen via [Listenable] to react to changes.
+  CallState get state => _state;
+
+  /// True while a connect/disconnect operation is in flight.
+  bool get isBusy => _busy;
+
+  /// True when the mic is live and the agent may be speaking.
+  bool get isInCall =>
+      _state == CallState.listening || _state == CallState.agentSpeaking;
+
+  /// Toggles the call: starts it if idle/ended, ends it while in a call
+  /// (or while connecting).
+  Future<void> toggle() async {
+    if (_busy) return;
+    if (isInCall || _state == CallState.connecting) {
+      await stop();
     } else {
-      await _startCall();
+      await start();
     }
   }
 
-  bool get _isInCall =>
-      _state == CallState.listening || _state == CallState.agentSpeaking;
-
-  Future<void> _startCall() async {
-    if (_busy) return;
+  /// Requests mic permission, fetches a room token, connects and enables the
+  /// local microphone.
+  Future<void> start() async {
+    if (_busy || isInCall) return;
     _busy = true;
-    setState(() => _state = CallState.connecting);
+    _state = CallState.connecting;
+    notifyListeners();
 
     try {
       if (!kIsWeb) {
         final status = await Permission.microphone.request();
         if (!status.isGranted) {
-          if (mounted) setState(() => _state = CallState.disconnected);
-          _showMessage('Microphone access is needed to talk to Sahayak');
+          _onMessage?.call('Microphone access is needed to talk to Sahayak');
+          await _teardown();
+          _state = CallState.disconnected;
+          notifyListeners();
           return;
         }
       }
@@ -93,33 +110,36 @@ class _VoiceCallControlState extends State<VoiceCallControl> {
       await room.connect(url, token);
       await room.localParticipant?.setMicrophoneEnabled(true);
 
-      if (mounted) setState(() => _state = CallState.listening);
+      _state = CallState.listening;
     } on ApiException catch (e) {
-      _showMessage(e.message);
-      await _cleanup();
-      if (mounted) setState(() => _state = CallState.disconnected);
+      _onMessage?.call(e.message);
+      await _teardown();
+      _state = CallState.disconnected;
     } catch (_) {
-      _showMessage('Could not start the voice call. Please try again.');
-      await _cleanup();
-      if (mounted) setState(() => _state = CallState.disconnected);
+      _onMessage?.call('Could not start the voice call. Please try again.');
+      await _teardown();
+      _state = CallState.disconnected;
     } finally {
       _busy = false;
+      notifyListeners();
     }
   }
 
-  Future<void> _endCall() async {
+  /// Ends the call and disconnects from the room.
+  Future<void> stop() async {
     if (_busy) return;
     _busy = true;
     try {
-      await _cleanup();
-      if (mounted) setState(() => _state = CallState.disconnected);
+      await _teardown();
+      _state = CallState.disconnected;
     } finally {
       _busy = false;
+      notifyListeners();
     }
   }
 
   /// Disconnects from the room and unsubscribes all listener callbacks.
-  Future<void> _cleanup() async {
+  Future<void> _teardown() async {
     try {
       await _listener?.dispose();
     } catch (_) {}
@@ -141,25 +161,26 @@ class _VoiceCallControlState extends State<VoiceCallControl> {
     listener
       ..on<RoomConnectedEvent>(
         (_) async {
-          if (mounted) setState(() => _state = CallState.listening);
+          _state = CallState.listening;
+          notifyListeners();
         },
       )
       ..on<RoomDisconnectedEvent>(
         (_) async {
-          if (mounted) setState(() => _state = CallState.disconnected);
+          _state = CallState.disconnected;
+          notifyListeners();
         },
       )
       ..on<ActiveSpeakersChangedEvent>((event) async {
-        if (!mounted ||
-            _state == CallState.connecting ||
-            _state == CallState.idle) {
+        if (_state == CallState.connecting || _state == CallState.idle) {
           return;
         }
         final localIdentity = room.localParticipant?.identity;
         final agentSpeaking =
             event.speakers.any((p) => p.identity != localIdentity);
-        setState(() => _state =
-            agentSpeaking ? CallState.agentSpeaking : CallState.listening);
+        _state =
+            agentSpeaking ? CallState.agentSpeaking : CallState.listening;
+        notifyListeners();
       })
       ..on<TranscriptionEvent>((event) async {
         if (event.participant.identity == room.localParticipant?.identity) {
@@ -170,7 +191,7 @@ class _VoiceCallControlState extends State<VoiceCallControl> {
           if (text.isEmpty) {
             continue;
           }
-          widget.onTranscript?.call(text, segment.isFinal);
+          _onTranscript?.call(text, segment.isFinal);
         }
       })
       ..on<DataReceivedEvent>((event) async {
@@ -182,9 +203,73 @@ class _VoiceCallControlState extends State<VoiceCallControl> {
           return;
         }
         if (payload is Map<String, dynamic>) {
-          widget.onSahayakRequest?.call(payload);
+          _onSahayakRequest?.call(payload);
         }
       });
+  }
+
+  @override
+  void dispose() {
+    // Cleanup is best-effort during teardown.
+    unawaited(_teardown());
+    super.dispose();
+  }
+}
+
+/// Mic/call button wired to a [VoiceCallController].
+///
+/// Convenience widget for embedding a ready-made voice control; screens with
+/// their own mic button can instead drive a [VoiceCallController] directly.
+class VoiceCallControl extends StatefulWidget {
+  const VoiceCallControl({
+    super.key,
+    this.onTranscript,
+    this.onSahayakRequest,
+    this.controller,
+  });
+
+  final AgentTranscriptCallback? onTranscript;
+  final SahayakRequestCallback? onSahayakRequest;
+
+  /// Optional externally-owned controller. If omitted the widget manages one.
+  final VoiceCallController? controller;
+
+  @override
+  State<VoiceCallControl> createState() => _VoiceCallControlState();
+}
+
+class _VoiceCallControlState extends State<VoiceCallControl> {
+  late final VoiceCallController _controller;
+  late final bool _ownsController;
+
+  VoiceCallController get _voice =>
+      widget.controller ?? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _ownsController = widget.controller == null;
+    _controller = widget.controller ??
+        VoiceCallController(
+          onTranscript: widget.onTranscript,
+          onSahayakRequest: widget.onSahayakRequest,
+          onMessage: _showMessage,
+        );
+    _voice.addListener(_onVoiceChanged);
+  }
+
+  void _onVoiceChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void didUpdateWidget(covariant VoiceCallControl oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?.removeListener(_onVoiceChanged);
+      widget.controller?.addListener(_onVoiceChanged);
+      setState(() {});
+    }
   }
 
   void _showMessage(String message) {
@@ -195,13 +280,13 @@ class _VoiceCallControlState extends State<VoiceCallControl> {
 
   @override
   void dispose() {
-    // Cleanup is best-effort during teardown.
-    unawaited(_cleanup());
+    _voice.removeListener(_onVoiceChanged);
+    if (_ownsController) _controller.dispose();
     super.dispose();
   }
 
   (IconData, Color, String) _buttonStyle() {
-    switch (_state) {
+    switch (_voice.state) {
       case CallState.connecting:
         return (Icons.sync, AppTheme.postRegistration, 'Connecting...');
       case CallState.listening:
@@ -231,17 +316,17 @@ class _VoiceCallControlState extends State<VoiceCallControl> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _StatusLine(state: _state),
+          _StatusLine(state: _voice.state),
           const SizedBox(height: 12),
           ElevatedButton.icon(
-            onPressed: _busy ? null : _onToggle,
+            onPressed: _voice.isBusy ? null : () => _voice.toggle(),
             style: ElevatedButton.styleFrom(
               backgroundColor: color,
               foregroundColor: Colors.white,
               minimumSize: const Size.fromHeight(54),
               disabledBackgroundColor: color.withValues(alpha: 0.6),
             ),
-            icon: _state == CallState.connecting
+            icon: _voice.state == CallState.connecting
                 ? const SizedBox(
                     width: 20,
                     height: 20,
