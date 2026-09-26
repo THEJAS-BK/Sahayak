@@ -38,9 +38,13 @@ export const TableHeader: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 };
 
-export const TableCell: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }> = ({ children, style }) => {
+export const TableCell: React.FC<{
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+  onClick?: (event: React.MouseEvent<HTMLTableCellElement>) => void;
+}> = ({ children, style, onClick }) => {
   return (
-    <td style={{ padding: '1rem', color: 'var(--color-text-primary)', fontSize: '0.875rem', ...style }}>
+    <td onClick={onClick} style={{ padding: '1rem', color: 'var(--color-text-primary)', fontSize: '0.875rem', ...style }}>
       {children}
     </td>
   );

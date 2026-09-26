@@ -1,6 +1,8 @@
 import type {
+  AssignableVolunteerListResult,
   AuditLogListResult,
   CurrentUser,
+  PoliceAssignmentResult,
   PoliceRequest,
   RequestListResult,
   VerificationListResult,
@@ -25,6 +27,31 @@ export class ApiError extends Error {
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
+}
+
+/**
+ * Role from the stored session. Read from the JWT as a fallback so a session
+ * written before this key existed still resolves. The backend enforces roles on
+ * every request regardless; this only decides what the UI shows.
+ */
+export function getSessionRole(): string | null {
+  const stored = localStorage.getItem('sahayak_user');
+  if (stored) {
+    try {
+      const role = (JSON.parse(stored) as { role?: string | null }).role;
+      if (role) return role;
+    } catch {
+      // fall through to the token
+    }
+  }
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1])) as { role?: string };
+    return payload.role ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function setSession(payload: {
@@ -113,6 +140,43 @@ export function fetchPoliceRequests(params?: Record<string, string>): Promise<Re
 
 export function fetchRequestDetail(id: string): Promise<{ request: PoliceRequest }> {
   return request(`/requests/${id}`);
+}
+
+/** P-02: volunteers that can be dispatched by hand, nearest first. */
+/**
+ * Deliberately sends no coordinates: volunteer positions are not reliable yet
+ * (registration-time `base_*` is usually just a locality), so a "nearest"
+ * list would be false precision. The list is ordered "can take it first".
+ * Pass `{ lat, lng }` once real positions exist — see
+ * `plans/deferred-before-production.md`.
+ */
+export interface AssignableVolunteerQuery {
+  lat?: number;
+  lng?: number;
+  search?: string;
+}
+
+export function fetchAssignableVolunteers(
+  query: AssignableVolunteerQuery = {},
+): Promise<AssignableVolunteerListResult> {
+  const params = new URLSearchParams();
+  if (query.lat != null && query.lng != null) {
+    params.set('lat', String(query.lat));
+    params.set('lng', String(query.lng));
+  }
+  if (query.search) params.set('search', query.search);
+  return request(`/police/volunteers?${params.toString()}`);
+}
+
+/** P-03: hand a request to one named volunteer. */
+export function assignRequestToVolunteer(
+  requestId: string,
+  volunteerId: string,
+): Promise<PoliceAssignmentResult> {
+  return request(`/police/requests/${requestId}/assign`, {
+    method: 'PATCH',
+    body: { volunteer_id: volunteerId },
+  });
 }
 
 export function fetchVerifications(params?: Record<string, string>): Promise<VerificationListResult> {

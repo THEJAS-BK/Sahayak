@@ -14,9 +14,11 @@ export const Sidebar: React.FC = () => {
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
     { icon: ListChecks, label: 'Requests', path: '/requests' },
     { icon: ShieldCheck, label: 'Verification', path: '/verification' },
-    { icon: AlertTriangle, label: 'Emergencies', path: '/emergencies' },
-    { icon: Users, label: 'Seniors', path: '/seniors' },
-    { icon: Users, label: 'Volunteers', path: '/volunteers' },
+    // No backend list endpoint exists for these yet, so they stay unclickable
+    // rather than leading to an empty page.
+    { icon: AlertTriangle, label: 'Emergencies', path: '/emergencies', pending: true },
+    { icon: Users, label: 'Seniors', path: '/seniors', pending: true },
+    { icon: Users, label: 'Volunteers', path: '/volunteers', pending: true },
   ];
 
   return (
@@ -42,6 +44,9 @@ export const Sidebar: React.FC = () => {
           <NavLink
             key={item.path}
             to={item.path}
+            onClick={(e) => {
+              if (item.pending) e.preventDefault();
+            }}
             style={({ isActive }) => ({
               display: 'flex',
               alignItems: 'center',
@@ -49,7 +54,8 @@ export const Sidebar: React.FC = () => {
               padding: '0.75rem 1rem',
               borderRadius: '0.375rem',
               backgroundColor: isActive ? 'var(--color-primary-navy-hover)' : 'transparent',
-              color: isActive ? '#FFFFFF' : '#94A3B8',
+              color: item.pending ? '#64748B' : isActive ? '#FFFFFF' : '#94A3B8',
+              cursor: item.pending ? 'not-allowed' : 'pointer',
               textDecoration: 'none',
               fontWeight: 500,
               transition: 'all 0.2s',
@@ -57,6 +63,11 @@ export const Sidebar: React.FC = () => {
           >
             <item.icon size={20} />
             {item.label}
+            {item.pending && (
+              <span style={{ marginLeft: 'auto', fontSize: '0.6875rem', letterSpacing: '0.04em', color: '#64748B' }}>
+                SOON
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
