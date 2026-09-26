@@ -5,7 +5,7 @@ Goal: senior taps a mic button in the Flutter app → live voice conversation wi
 ## Scope
 
 1. **Backend** — `POST /api/voice-sessions` issues a short-TTL LiveKit join token to an authenticated user.
-2. **Voice agent** — run in worker mode (`uv run agent.py dev`) using automatic dispatch; no pipeline changes.
+2. **Voice agent** — run in worker mode (`uv run agent.py dev`); no pipeline changes. Dispatch is not free: the token must request the agent, and the worker must register under the same name. See "Automatic dispatch" in `plans/real-data-and-voice-readiness.md`.
 3. **Flutter** — real email+OTP login (to obtain a JWT), then a mic/call button that connects to LiveKit.
 
 Repo facts that shaped this design:
@@ -137,11 +137,11 @@ transcription UI was added on top.
 
 ## Dev run guide (how to run it now)
 
-1. **Database** — `cd backend && bash scripts/dev-db.sh` (Postgres on :5433, script idempotent) → `npm run db:migrate` → `npm run db:seed` (first time only; `--fresh` to reset).
+1. **Database** — `cd backend && bash scripts/dev-db.sh` (Postgres on :5432, the pgAdmin-registered server) → `npm run db:migrate` → `npm run db:seed` (creates the single police account from `POLICE_BOOTSTRAP_EMAIL`, dev value `police@gmail.com`; first time only, `--fresh` to reset).
 2. **Backend** — `npm run dev` (tsx watch, port 3000). OTP codes appear in this terminal's `[mail:dev]` log lines.
 3. **Voice agent** — `cd livekit-voice-agent && uv run agent.py dev`; wait for `registered worker` (needs `LIVEKIT_*` + `OPENAI_API_KEY`/`ASSEMBLYAI_API_KEY`/`CARTESIA_API_KEY`).
 4. **App** — open `mobile/` in Android Studio, start an emulator (or plug in a device), then `flutter run`. Emulator default reaches the backend via `http://10.0.2.2:3000`; a physical device needs `--dart-define=API_BASE_URL=http://<LAN-IP>:3000`. Web/desktop default to `http://localhost:3000`.
-5. **Login** — `test@example.com`, code is `123456` (dev-only). Senior Home → **Click to Speak** → **Start voice call** → grant mic permission → talk; the agent's speech streams into the chat transcript.
+5. **Login** — register in the app with any email of your own, code is `123456` (dev-only), then approve the registration with the police account (`police@gmail.com`) in the web portal. Senior Home → **Click to Speak** → **Start voice call** → grant mic permission → talk; the agent's speech streams into the chat transcript.
 6. Sandbox emulators available: `Medium_Phone`, `sahayak_test` (`flutter emulators --launch <id>`).
 
 ## Iteration 3 — agent greeting + structured help request → backend print (as built)
@@ -177,8 +177,11 @@ and `source: "voice_agent"`, then `POST /api/requests`.
 
 ### Dev DB ✅
 - BR-13 (`REQUEST_ALREADY_OPEN`) blocks a new request while an open one exists,
-  and every seeded senior had one — `psql` set `test@example.com`'s open
+  and every seeded senior had one — `psql` set the test account's open
   `help_requests` rows to `CANCELLED` (dev-only; re-run if reseeding with `--fresh`).
+  That seeded account is gone now: the dev database holds only the
+  `POLICE_BOOTSTRAP_EMAIL` police account, so register your own account in the
+  app (code `123456`) and approve it with the police account first.
 
 ### Mobile ✅
 - `lib/services/api_client.dart` — new `GET` method (Bearer + 401 refresh-retry,
@@ -197,3 +200,23 @@ and `source: "voice_agent"`, then `POST /api/requests`.
 - Flutter: `flutter analyze` clean; `flutter test` pass.
 - End-to-end on device: runs the full chain — greeting → conversation → tool →
   data channel → app POST → backend print (needs agent running + emulator).
+### Structured output (v1)
+
+See `plans/voice-structured-output.md` for the current envelope contract and the
+agent -> app -> backend pipeline. The live flow uses the versioned envelope
+(`{ v, type, request_id, request }`) parsed by `mobile/lib/services/voice_payload.dart`,
+with the app injecting the senior's real `latitude`/`longitude` from `GET /api/me`
+and `source: "voice_agent"` before `POST /api/requests`.
+
+### Verified on 2026-09-25
+
+- A token minted by the real `POST /api/voice-sessions` pulls the agent into the
+  room (`agent-AJ_...` joins seconds after the client connects). This was broken
+  before the `roomConfig.agents` fix.
+- LiveKit inference STT returns interim and final transcripts from the gateway
+  using only `LIVEKIT_API_KEY`; no AssemblyAI/OpenAI/Cartesia plugin or separate
+  key is involved.
+- The full room session producing the `sahayak_request` envelope is still
+  unobserved, because every attempt so far used synthesised audio rather than a
+  live microphone. This is the one open item.
+

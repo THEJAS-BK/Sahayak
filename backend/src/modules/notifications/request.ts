@@ -51,3 +51,41 @@ export async function notifyRequestStatus(
       : 'The volunteer is now working on your request.'
   await pushOrLog(recipient.fcmToken, title, body, { type: `request_${status.toLowerCase()}` })
 }
+/**
+ * P-03: a police officer named the volunteer, so both sides are told. The
+ * volunteer still has to accept, and the senior is told a named volunteer is
+ * now on the way rather than "someone nearby".
+ */
+export async function notifyPoliceAssignment(
+  volunteer: Recipient & { fullName: string | null },
+  senior: Recipient,
+  request: { id: string; category: string },
+): Promise<void> {
+  const toVolunteer = {
+    title: 'Police assigned you a request',
+    body: `A "${request.category}" request was assigned to you by police. Open Sahayak to accept it.`,
+  }
+  await pushOrLog(volunteer.fcmToken, toVolunteer.title, toVolunteer.body, {
+    type: 'request_assigned',
+    request_id: request.id,
+  })
+  try {
+    await sendEmail(volunteer.email, `Sahayak: ${toVolunteer.title}`, toVolunteer.body)
+  } catch (err) {
+    logger.error('[notify] email failed', err)
+  }
+
+  const toSenior = {
+    title: 'A volunteer was assigned to your request',
+    body: `${volunteer.fullName || 'A volunteer'} was assigned to your "${request.category}" request by police and has been asked to accept.`,
+  }
+  await pushOrLog(senior.fcmToken, toSenior.title, toSenior.body, {
+    type: 'request_assigned',
+    request_id: request.id,
+  })
+  try {
+    await sendEmail(senior.email, `Sahayak: ${toSenior.title}`, toSenior.body)
+  } catch (err) {
+    logger.error('[notify] email failed', err)
+  }
+}

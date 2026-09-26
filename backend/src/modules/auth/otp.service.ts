@@ -19,8 +19,13 @@ export function generateCode(): string {
 
 /**
  * 3 OTPs per email per 10 minutes (DB-backed, restart-safe).
+ *
+ * Skipped when RATE_LIMIT_DISABLED=true. Unlike the per-IP limiter this one
+ * lives in `otp_codes`, so it survives a server restart and will lock a real
+ * user out for up to 10 minutes with no way to clear it but waiting.
  */
 export async function assertCanIssue(db: Queryable, email: string): Promise<void> {
+  if (config.rateLimitDisabled) return
   const res = await db.query(
     `SELECT count(*)::int AS n FROM otp_codes
      WHERE email = $1 AND created_at > now() - interval '10 minutes'`,

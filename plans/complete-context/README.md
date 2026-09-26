@@ -39,7 +39,7 @@ them with **volunteers** and local **police/emergency services**:
                                              ▼
        ┌──────────────┐   HTTPS/JSON    ┌────────────────────┐   SQL   ┌──────────────┐
        │  mobile/app  │ ───────────────►│      backend       │ ───────►│   Postgres   │
-       │ (Flutter)    │ ◄───────────────│  Express + TypeScript│ ◄───────│  (dev :5433) │
+       │ (Flutter)    │ ◄───────────────│  Express + TypeScript│ ◄───────│  (dev :5432) │
        └──────────────┘   JWT + tokens  │  :3000  /api        │         └──────────────┘
                                         └─────────┬──────────┘
                        HTTPS/JSON (Bearer JWT)    │
@@ -115,7 +115,7 @@ Plus seeded help requests in every state, 3 emergency events and audit logs.
 Order: database → backend → whichever client you're testing.
 
 ```bash
-# 1. Database + backend  (http://localhost:3000, Postgres :5433)
+# 1. Database + backend  (http://localhost:3000, Postgres :5432)
 cd backend && npm install
 npm run db:start
 npm run db:reset        # migrations
@@ -137,7 +137,7 @@ cd livekit-voice-agent && uv sync && uv run agent.py dev
 | Service | Port / URL |
 |---|---|
 | Backend API | `http://localhost:3000` (`/health`) |
-| Dev Postgres | `:5433` (rootless, socket in `backend/.pgdata/socket`) |
+| Dev Postgres | `:5432` (PostgreSQL 18, role `postgres`) |
 | Web portal (dev) | `http://localhost:5173` |
 | LiveKit (cloud) | `wss://<project>.livekit.cloud` (set in backend `.env`) |
 

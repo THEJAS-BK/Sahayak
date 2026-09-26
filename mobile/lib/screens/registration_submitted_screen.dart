@@ -1,19 +1,132 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../services/api_client.dart';
+import '../services/registration_service.dart';
 import '../services/user_session.dart';
 import '../widgets/primary_button.dart';
 import '../widgets/status_badge.dart';
 import '../theme/app_colors.dart';
+import 'create_login_screen.dart';
 import 'volunteer_home_screen.dart';
 import 'senior_home_screen.dart';
 
 enum UserRole { volunteer, senior }
 
-class RegistrationSubmittedScreen extends StatelessWidget {
+/// Waits for the police decision on the submitted registration.
+///
+/// The status comes from `GET /api/registrations/me` (R-03) — there is no
+/// local "approve" shortcut, so the screen reflects exactly what the backend
+/// has stored.  Once APPROVED the role is persisted and the user continues to
+/// their dashboard; a REJECTED decision shows the officer's reason.
+class RegistrationSubmittedScreen extends StatefulWidget {
   final UserRole role;
   const RegistrationSubmittedScreen({super.key, required this.role});
 
   @override
+  State<RegistrationSubmittedScreen> createState() =>
+      _RegistrationSubmittedScreenState();
+}
+
+class _RegistrationSubmittedScreenState
+    extends State<RegistrationSubmittedScreen> {
+  static const _pollInterval = Duration(seconds: 3);
+
+  MyVerification? _verification;
+  String? _error;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _timer = Timer.periodic(_pollInterval, (_) => _refresh());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final verification = await RegistrationService.instance.myVerification();
+      if (!mounted) return;
+      setState(() {
+        _verification = verification;
+        _error = null;
+      });
+      if (verification?.isApproved ?? false) {
+        _timer?.cancel();
+        await _continueToApp();
+      }
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _error = 'Could not reach the server. Retrying…');
+    }
+  }
+
+  Future<void> _continueToApp() async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    // The access token issued at login still carries the pre-approval claims
+    // (role null, account inactive), so rotate it before any protected call.
+    // ApiClient.refresh() already clears the stored session when it fails.
+    final refreshed = await ApiClient.instance.refresh();
+    if (!refreshed) {
+      if (!mounted) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          content: Text('Session expired. Please sign in again.'),
+        ));
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const CreateLoginScreen()),
+        (route) => false,
+      );
+      return;
+    }
+
+    await UserSession.save(
+      role: widget.role == UserRole.volunteer ? 'volunteer' : 'senior',
+    );
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(
+        builder: (_) => widget.role == UserRole.volunteer
+            ? const VolunteerHomeScreen()
+            : const SeniorHomeScreen(),
+      ),
+      (route) => false,
+    );
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('Approved — welcome to Sahayak'),
+        backgroundColor: AppColors.success,
+      ));
+  }
+
+  VerificationStatus? get _status {
+    final v = _verification;
+    if (v == null) return null;
+    if (v.isApproved) return VerificationStatus.approved;
+    if (v.isRejected) return VerificationStatus.rejected;
+    return VerificationStatus.pending;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final status = _status;
+    final approved = status == VerificationStatus.approved;
+    final rejected = status == VerificationStatus.rejected;
+
     return Scaffold(
       backgroundColor: AppColors.scaffold,
       body: SafeArea(
@@ -29,12 +142,25 @@ class RegistrationSubmittedScreen extends StatelessWidget {
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
-                    color: AppColors.warning.withAlpha(24),
+                    color: (approved
+                            ? AppColors.success
+                            : rejected
+                                ? AppColors.error
+                                : AppColors.warning)
+                        .withAlpha(24),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.hourglass_top_rounded,
-                    color: AppColors.warning,
+                  child: Icon(
+                    approved
+                        ? Icons.verified_rounded
+                        : rejected
+                            ? Icons.cancel_rounded
+                            : Icons.hourglass_top_rounded,
+                    color: approved
+                        ? AppColors.success
+                        : rejected
+                            ? AppColors.error
+                            : AppColors.warning,
                     size: 40,
                   ),
                 ),
@@ -42,11 +168,15 @@ class RegistrationSubmittedScreen extends StatelessWidget {
               const SizedBox(height: 20),
 
               // ── Heading ──────────────────────────────────────────────
-              const Center(
+              Center(
                 child: Text(
-                  'Registration Submitted',
+                  approved
+                      ? 'Registration Approved'
+                      : rejected
+                          ? 'Registration Rejected'
+                          : 'Registration Submitted',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
@@ -54,21 +184,37 @@ class RegistrationSubmittedScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 10),
-              const Center(
-                child: StatusBadge(status: VerificationStatus.pending),
-              ),
+              if (status != null)
+                Center(child: StatusBadge(status: status)),
               const SizedBox(height: 16),
-              const Center(
+
+              // ── Message ──────────────────────────────────────────────
+              Center(
                 child: Text(
-                  'Awaiting police verification.\nYou will be notified once approved.',
+                  rejected
+                      ? (_verification?.reviewReason?.isNotEmpty ?? false
+                          ? _verification!.reviewReason!
+                          : 'The police officer rejected this registration.')
+                      : approved
+                          ? 'Your account is active.'
+                          : 'Awaiting police verification.\n'
+                              'You will be notified once approved.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 14,
                     height: 1.5,
                   ),
                 ),
               ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 12, color: AppColors.error),
+                ),
+              ],
 
               const SizedBox(height: 36),
 
@@ -78,42 +224,40 @@ class RegistrationSubmittedScreen extends StatelessWidget {
                 label: 'Registration submitted',
                 isDone: true,
               ),
-              const _TimelineStep(
+              _TimelineStep(
                 index: 2,
                 label: 'Police verification in progress',
-                isDone: false,
+                isDone: approved || rejected,
               ),
-              const _TimelineStep(
+              _TimelineStep(
                 index: 3,
-                label: 'Account activated',
-                isDone: false,
+                label: rejected ? 'Account rejected' : 'Account activated',
+                isDone: approved,
               ),
 
               const SizedBox(height: 36),
 
-              // TODO: replace with real status polling / push notification.
-              // Button below simulates approval for local dev only.
-              PrimaryButton(
-                label: 'Simulate approval (dev only)',
-                color: AppColors.accentBlue,
-                onPressed: () async {
-                  // Persist the role so the user won't go through
-                  // registration again on future logins.
-                  await UserSession.save(
-                    role: role == UserRole.volunteer ? 'volunteer' : 'senior',
-                  );
-                  if (!context.mounted) return;
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => role == UserRole.volunteer
-                          ? const VolunteerHomeScreen()
-                          : const SeniorHomeScreen(),
-                    ),
-                    (route) => false,
-                  );
-                },
-              ),
+              if (!approved && !rejected)
+                Text(
+                  'Checking the police portal every ${_pollInterval.inSeconds} seconds…',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              if (approved)
+                PrimaryButton(
+                  label: 'Continue',
+                  color: AppColors.success,
+                  onPressed: _continueToApp,
+                ),
+              if (rejected)
+                PrimaryButton(
+                  label: 'Check again',
+                  color: AppColors.accentBlue,
+                  onPressed: _refresh,
+                ),
             ],
           ),
         ),
@@ -143,30 +287,37 @@ class _TimelineStep extends StatelessWidget {
             width: 26,
             height: 26,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
               color: isDone ? AppColors.success : Colors.transparent,
-              border: isDone ? null : Border.all(color: AppColors.divider, width: 2),
+              border: Border.all(
+                color: isDone ? AppColors.success : AppColors.divider,
+                width: 2,
+              ),
+              shape: BoxShape.circle,
             ),
             child: isDone
-                ? const Icon(Icons.check, color: Colors.white, size: 14)
+                ? const Icon(Icons.check, size: 15, color: Colors.white)
                 : Center(
                     child: Text(
                       '$index',
                       style: const TextStyle(
                         fontSize: 11,
+                        fontWeight: FontWeight.w700,
                         color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
           ),
           const SizedBox(width: 12),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: isDone ? FontWeight.w600 : FontWeight.w400,
-              color: isDone ? AppColors.textPrimary : AppColors.textSecondary,
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: isDone ? FontWeight.w600 : FontWeight.w400,
+                color: isDone
+                    ? AppColors.textPrimary
+                    : AppColors.textSecondary,
+              ),
             ),
           ),
         ],

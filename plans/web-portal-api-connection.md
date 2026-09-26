@@ -8,17 +8,19 @@ real data from the database instead of the static mocks in `src/data/mock.ts`.
 
 ## Prerequisites (environment, not code)
 
-- Dev Postgres on `:5433` must be running and seeded:
+- Dev Postgres on `:5432` must be running, with the police account bootstrapped:
 
   ```bash
   cd backend
-  npm run db:start
+  npm run db:migrate
   npm run db:seed:fresh
   ```
 
 - Backend dev server on `http://localhost:3000` (CORS is already open).
-- Police identity used for dev: `ashok.kini@example.com` (role `police`);
+- Police identity used for dev: the single account created by `db:seed:fresh`
+  from `POLICE_BOOTSTRAP_EMAIL` (dev value `police@gmail.com`, role `police`);
   dev OTP code is fixed at `123456` (see `OTP_DEV_CODE` in `backend/.env`).
+  There are no seeded personas — approve real registrations from the app here.
 
 ## Backend endpoints used
 
@@ -51,7 +53,7 @@ All of the above require `Authorization: Bearer <token>` for a `police` role.
 - `web/src/pages/Login/index.tsx` (replaces `.gitkeep`)
   - Dev-token page: paste access token (+ optional refresh token) and Save.
   - Convenience "Request dev token" button: `POST /auth/otp/request` →
-    `POST /auth/otp/verify` (prefills `ashok.kini@example.com`, code `123456`)
+    `POST /auth/otp/verify` (email typed in by the officer, code `123456`)
     and stores the returned `access_token`.
 
 ### Modified files

@@ -61,6 +61,7 @@ export async function createApprovedSenior(overrides: { email?: string; full_nam
 
 export async function createApprovedVolunteer(overrides: {
   email?: string
+  full_name?: string
   is_available?: boolean
   base_latitude?: number
   base_longitude?: number
@@ -79,7 +80,7 @@ export async function createApprovedVolunteer(overrides: {
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
       user.id,
-      'Vol ' + user.id.slice(0, 4),
+      overrides.full_name ?? 'Vol ' + user.id.slice(0, 4),
       '+919800000000',
       overrides.base_latitude ?? 12.97,
       overrides.base_longitude ?? 77.59,

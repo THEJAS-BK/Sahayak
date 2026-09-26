@@ -92,14 +92,22 @@ class SessionService {
   }
 
   /// Rotates the tokens after a refresh while keeping the cached user info.
-  Future<void> updateTokens(String accessToken, String? refreshToken) async {
+  /// Stores a refreshed token pair. [role] / [isActive] come from the refresh
+  /// response because they can change mid-session — a freshly approved
+  /// registration flips the JWT claims from inactive to active.
+  Future<void> updateTokens(
+    String accessToken,
+    String? refreshToken, {
+    String? role,
+    bool? isActive,
+  }) async {
     final current = _session;
     final updated = Session(
       accessToken: accessToken,
       refreshToken: refreshToken ?? current?.refreshToken,
       userId: current?.userId ?? '',
-      role: current?.role ?? '',
-      isActive: current?.isActive ?? true,
+      role: role ?? current?.role ?? '',
+      isActive: isActive ?? current?.isActive ?? true,
     );
     await save(updated);
   }

@@ -6,10 +6,24 @@ import { Verification } from './pages/Verification';
 import { Requests } from './pages/Requests';
 import { RequestDetails } from './pages/RequestDetails';
 import { Login } from './pages/Login';
-import { getToken } from './api/client';
+import { getSessionRole, getToken } from './api/client';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   if (!getToken()) return <Navigate to="/login" replace />;
+  // This portal is the police console. The API rejects a non-police caller on
+  // every route (requireRole('police')), so without this a senior or volunteer
+  // who logged in would land on a shell of empty pages and 403s.
+  if (getSessionRole() !== 'police') {
+    return (
+      <div style={{ padding: '2rem', maxWidth: '32rem' }}>
+        <h1 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>Police access only</h1>
+        <p style={{ color: 'var(--color-text-secondary)', margin: 0 }}>
+          This portal is for police officers. Sign in with a police account, or clear the
+          session and try again.
+        </p>
+      </div>
+    );
+  }
   return <>{children}</>;
 }
 

@@ -20,6 +20,12 @@ const intFromEnv = (fallback: number) =>
     z.coerce.number().int().positive(),
   )
 
+const strFromEnv = (fallback: string) =>
+  z.preprocess(
+    (v) => (v === '' || v === undefined ? fallback : v),
+    z.string().min(1),
+  )
+
 const emptyToUndefined = z.preprocess(
   (v: unknown) => (typeof v === 'string' && v.length === 0 ? undefined : v),
   z.unknown(),
@@ -38,6 +44,8 @@ const rawEnv = z
     DISPATCH_BATCH_SIZE: intFromEnv(5),
     DISPATCH_TIMEOUT_S: intFromEnv(90),
     MAX_DISPATCH_ATTEMPTS: intFromEnv(3),
+    REQUESTS_DRY_RUN: emptyToUndefined,
+    RATE_LIMIT_DISABLED: emptyToUndefined,
     SMTP_HOST: emptyToUndefined,
     SMTP_PORT: emptyToUndefined,
     SMTP_USER: emptyToUndefined,
@@ -50,6 +58,7 @@ const rawEnv = z
     LIVEKIT_API_KEY: emptyToUndefined,
     LIVEKIT_API_SECRET: emptyToUndefined,
     LIVEKIT_TOKEN_TTL_SECONDS: intFromEnv(300),
+    LIVEKIT_AGENT_NAME: strFromEnv('sahayak'),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== 'production') return
@@ -106,6 +115,18 @@ export const config = {
     timeoutS: env.DISPATCH_TIMEOUT_S,
     maxAttempts: env.MAX_DISPATCH_ATTEMPTS,
   },
+  requests: {
+    /** When true, POST /api/requests logs the body and returns 201 without persisting. */
+    dryRun: env.REQUESTS_DRY_RUN === 'true' || env.REQUESTS_DRY_RUN === '1',
+  },
+  /**
+   * Escape hatch for local development only. True when RATE_LIMIT_DISABLED is
+   * set, and always false in production so the flag cannot be shipped by
+   * accident. Re-enable the limiter before any real deployment — see
+   * `plans/deferred-before-production.md`.
+   */
+  rateLimitDisabled:
+    (env.RATE_LIMIT_DISABLED === 'true' || env.RATE_LIMIT_DISABLED === '1') && env.NODE_ENV !== 'production',
   smtp:
     smtpHost.length > 0
       ? {
@@ -127,6 +148,7 @@ export const config = {
     apiKey: typeof env.LIVEKIT_API_KEY === 'string' ? env.LIVEKIT_API_KEY : '',
     apiSecret: typeof env.LIVEKIT_API_SECRET === 'string' ? env.LIVEKIT_API_SECRET : '',
     tokenTtlS: env.LIVEKIT_TOKEN_TTL_SECONDS,
+    agentName: env.LIVEKIT_AGENT_NAME,
   },
 } as const
 

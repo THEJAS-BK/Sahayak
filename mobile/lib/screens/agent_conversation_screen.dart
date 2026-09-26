@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 
-import '../services/agent_service.dart';
+import '../models/message.dart';
 import '../services/api_client.dart';
+import '../services/profile_service.dart';
+import '../services/voice_payload.dart';
 import '../theme/app_colors.dart';
 import '../widgets/chat_bubble.dart';
-import '../widgets/text_input_bar.dart';
+import '../widgets/mic_button.dart';
+import '../widgets/pending_request_card.dart';
+import '../widgets/request_review_dialog.dart';
 import '../widgets/voice_call.dart';
 
 /// Voice-based agent conversation screen.
@@ -12,13 +16,12 @@ import '../widgets/voice_call.dart';
 /// The big mic button drives a real LiveKit voice call via
 /// [VoiceCallController]: it POSTs `/api/voice-sessions` for a room token,
 /// connects to the room and streams the agent's speech back as transcript
-/// [ChatBubble]s. When the agent records a help request it is published over
-/// the `sahayak_request` data channel, which this screen forwards to
-/// `POST /api/requests`.
-///
-/// The text input below is an independent fallback that talks to the
-/// `/api/agent/chat` endpoint (may not be live yet) and surfaces a friendly
-/// error via [_showError].
+/// [ChatBubble]s. When the agent has gathered a help request it is published
+/// over the `sahayak_request` data channel; this screen pauses the microphone
+/// and asks the senior to review it. Sending the request from that dialog POSTs
+/// `/api/requests`; continuing the conversation leaves it on a pending card
+/// that can be reopened later. Typed messages were removed: the backend has no
+/// text-chat endpoint, so the voice call is the only conversation channel.
 class AgentConversationScreen extends StatefulWidget {
   const AgentConversationScreen({super.key});
 
@@ -30,7 +33,6 @@ class AgentConversationScreen extends StatefulWidget {
 class _AgentConversationScreenState extends State<AgentConversationScreen> {
   // ── Services ─────────────────────────────────────────────────────────────
   late final VoiceCallController _voice;
-  final AgentService _agentService = AgentService();
 
   // ── State ─────────────────────────────────────────────────────────────────
   ConversationState _convState = ConversationState.idle;
@@ -41,9 +43,22 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
   /// Non-null when there is an error to display in the error banner.
   String? _errorMessage;
 
+  /// request_ids already forwarded to the backend (dedupe against re-published
+  /// or duplicate data-channel deliveries).
+  final Set<String> _seenRequestIds = {};
+
+  /// The request the senior has not sent yet: shown on a pending card and, once
+  /// it arrives, in the review dialog.
+  VoiceHelpRequest? _pendingRequest;
+
+  /// True while the review dialog is on screen (mutes the mic, blocks a second
+  /// dialog).
+  bool _reviewOpen = false;
+
+  /// True while the confirmed request is being POSTed.
+  bool _sending = false;
+
   // ── Text input ─────────────────────────────────────────────────────────────
-  final TextEditingController _textCtrl = TextEditingController();
-  final FocusNode _textFocus = FocusNode();
   final ScrollController _scrollCtrl = ScrollController();
 
   // ── Conversation history snapshot (updated after each send) ───────────────
@@ -107,74 +122,117 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
     _scrollToBottom();
   }
 
-  /// The agent published a structured help request over the data channel —
-  /// forward it to the backend on the senior's behalf.
-  Future<void> _onSahayakRequest(Map<String, dynamic> request) async {
+  /// The agent published a structured help request over the data channel — parse
+  /// the envelope and ask the senior to review it before anything is sent.
+  Future<void> _onSahayakRequest(Map<String, dynamic> payload) async {
     if (!mounted) return;
+
+    final VoiceHelpRequest parsed;
     try {
-      await ApiClient.instance.post('/api/requests', body: request);
+      parsed = VoiceHelpRequest.fromDataChannel(payload);
+    } on VoicePayloadException catch (e) {
+      _showError('Voice request was invalid: ${e.message}');
+      return;
+    }
+    if (!parsed.isValid) {
+      _showError('The voice request was missing a category or description.');
+      return;
+    }
+
+    // Dedupe re-published / duplicate deliveries.
+    if (parsed.requestId.isNotEmpty) {
+      if (_seenRequestIds.contains(parsed.requestId)) return;
+      _seenRequestIds.add(parsed.requestId);
+    }
+
+    setState(() => _pendingRequest = parsed);
+    await _presentReview();
+  }
+
+  /// Mutes the mic, shows the review dialog for the pending request and acts on
+  /// the outcome: send it, or put the microphone back and keep talking.
+  Future<void> _presentReview() async {
+    final pending = _pendingRequest;
+    if (pending == null || _reviewOpen || _sending || !mounted) return;
+
+    setState(() {
+      _reviewOpen = true;
+      _errorMessage = null;
+    });
+    await _voice.setMicrophoneEnabled(false);
+    if (!mounted) return;
+
+    VoiceHelpRequest? confirmed;
+    try {
+      confirmed = await showRequestReviewDialog(context, request: pending);
+    } finally {
+      if (mounted) setState(() => _reviewOpen = false);
+    }
+    if (!mounted) return;
+
+    // The agent published a newer request while the dialog was open — review
+    // that one instead of the stale draft.
+    final current = _pendingRequest;
+    if (current != null && current.requestId != pending.requestId) {
+      await _presentReview();
+      return;
+    }
+
+    await _voice.setMicrophoneEnabled(true);
+    if (confirmed == null) return;
+
+    await _sendRequest(confirmed);
+  }
+
+  /// POSTs the confirmed request. The pending card stays put on failure so the
+  /// senior can retry from it.
+  Future<void> _sendRequest(VoiceHelpRequest request) async {
+    setState(() {
+      _sending = true;
+      _errorMessage = null;
+    });
+
+    try {
+      // File the request at the senior's registered home location so matching
+      // can find volunteers who are actually nearby.
+      final me = await ProfileService.instance.fetchMe(force: true);
+      final home = me.homeCoordinates;
+      if (home == null) {
+        throw const ApiException(
+          code: 'NO_HOME_LOCATION',
+          message: 'Add a home location to your senior profile before '
+              'sending a request',
+        );
+      }
+      await ApiClient.instance.post(
+        '/api/requests',
+        body: request.toCreateBody(
+          latitude: home.latitude,
+          longitude: home.longitude,
+        ),
+      );
       if (!mounted) return;
       setState(() {
+        _pendingRequest = null;
         _messages.add(Message(
-          text: 'Got it — your request is recorded. A volunteer will be in '
-              'touch shortly.',
+          text: 'Sent — ${categoryLabel(request.category).toLowerCase()} help'
+              '${request.priority == 'urgent' ? ' (urgent)' : ''} requested. '
+              'A volunteer will be in touch shortly.',
           role: MessageRole.agent,
           timestamp: DateTime.now(),
         ));
       });
       _scrollToBottom();
     } on ApiException catch (e) {
-      _showError('Could not submit your request: ${e.message}');
+      _showError(e.code == 'REQUEST_ALREADY_OPEN'
+          ? 'You already have a help request open. A volunteer is on the way.'
+          : e.code == 'NO_HOME_LOCATION'
+              ? e.message
+              : 'Could not send your request: ${e.message}');
     } catch (_) {
-      _showError('Could not submit your request. Please try again.');
-    }
-  }
-
-  // ── Text fallback flow ────────────────────────────────────────────────────
-
-  Future<void> _onSend() async {
-    final text = _textCtrl.text.trim();
-    if (text.isEmpty) return;
-
-    _textCtrl.clear();
-    setState(() {
-      _convState = ConversationState.awaitingReply;
-      _errorMessage = null;
-      _messages = [
-        ..._agentService.history,
-        Message(
-          text: text,
-          role: MessageRole.user,
-          timestamp: DateTime.now(),
-        ),
-      ];
-    });
-    _scrollToBottom();
-
-    // Add pending agent bubble
-    final pendingIdx = _agentService.addPendingAgent();
-    setState(() {
-      _messages = List.from(_agentService.history);
-    });
-    _scrollToBottom();
-
-    try {
-      final reply = await _agentService.sendText(text);
-      _agentService.resolvePendingAgent(pendingIdx, reply);
-    } on AgentServiceException catch (e) {
-      _agentService.removePendingAgent(pendingIdx);
-      _showError(e.message);
-    } catch (e) {
-      _agentService.removePendingAgent(pendingIdx);
-      _showError('An unexpected error occurred: $e');
+      _showError('Could not send your request. Please try again.');
     } finally {
-      if (mounted) {
-        setState(() {
-          _convState = ConversationState.idle;
-          _messages = List.from(_agentService.history);
-        });
-        _scrollToBottom();
-      }
+      if (mounted) setState(() => _sending = false);
     }
   }
 
@@ -201,9 +259,6 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
   void dispose() {
     _voice.removeListener(_onVoiceChanged);
     _voice.dispose();
-    _agentService.dispose();
-    _textCtrl.dispose();
-    _textFocus.dispose();
     _scrollCtrl.dispose();
     super.dispose();
   }
@@ -212,8 +267,6 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isBusy = _convState == ConversationState.awaitingReply ||
-        _convState == ConversationState.transcribing;
     final isListening = _convState == ConversationState.listening;
 
     return Scaffold(
@@ -287,11 +340,7 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
             // ── Error banner ────────────────────────────────────────────
             if (_errorMessage != null) _ErrorBanner(
               message: _errorMessage!,
-              onRetry: () {
-                setState(() => _errorMessage = null);
-                // Re-focus text field so user can easily type or retry
-                _textFocus.requestFocus();
-              },
+              onRetry: () => setState(() => _errorMessage = null),
               onDismiss: () => setState(() => _errorMessage = null),
             ),
 
@@ -335,6 +384,13 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
                       ),
                     ),
 
+                  // Request the senior has not sent yet — tap to reopen review
+                  if (_pendingRequest != null)
+                    PendingRequestCard(
+                      request: _pendingRequest!,
+                      onReview: _sending ? () {} : _presentReview,
+                    ),
+
                   // Mic button — drives the LiveKit voice call
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 20),
@@ -344,23 +400,14 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
                     ),
                   ),
 
-                  // Text input bar (always visible)
-                  TextInputBar(
-                    controller: _textCtrl,
-                    focusNode: _textFocus,
-                    onSend: isBusy ? () {} : _onSend,
-                    isBusy: isBusy,
-                    hintText: isListening
-                        ? 'Listening… speak now'
-                        : 'Or type a message…',
-                    helperText: null,
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                     child: Text(
-                      'Feeling done? Tap Dashboard above to return home.',
+                      isListening
+                          ? 'Listening — speak now.'
+                          : 'Feeling done? Tap Dashboard above to return home.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 11,
                         color: AppColors.textSecondary,
                       ),

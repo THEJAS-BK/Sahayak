@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/Table';
+import { AssignVolunteerDialog } from '../../components/AssignVolunteerDialog';
 import { fetchPoliceRequests } from '../../api/client';
 import { priorityLabel, type PoliceRequest, type RequestStatus } from '../../api/types';
-import { Search } from 'lucide-react';
+import { Search, UserCheck } from 'lucide-react';
 
 const statusBadgeVariant: Record<RequestStatus, 'success' | 'warning' | 'error' | 'default'> = {
   COMPLETED: 'success',
@@ -24,6 +26,12 @@ const categoryLabels: Record<string, string> = {
   transport_assistance: 'Transport Assistance',
 };
 
+/** A request police may still hand to a named volunteer (BR-04, ASSIGNABLE_STATUSES). */
+const ASSIGNABLE: RequestStatus[] = ['PENDING', 'MATCHING', 'DISPATCHED'];
+
+const canAssign = (req: PoliceRequest): boolean =>
+  ASSIGNABLE.includes(req.status) && req.assigned_volunteer === null;
+
 const formatDate = (iso: string) => new Date(iso).toLocaleString(undefined, {
   dateStyle: 'medium',
   timeStyle: 'short',
@@ -37,6 +45,8 @@ export const Requests: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'All' | RequestStatus>('All');
   const [priorityFilter, setPriorityFilter] = useState<'All' | 'URGENT' | 'NORMAL'>('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [assignTarget, setAssignTarget] = useState<PoliceRequest | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const params: Record<string, string> = {};
@@ -60,6 +70,27 @@ export const Requests: React.FC = () => {
     const matchesSearch = (req.senior.full_name ?? '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
+
+  const handleAssigned = (request: PoliceRequest, volunteer: { id: string; full_name: string | null }) => {
+    setRequests((prev) =>
+      prev.map((r) =>
+        r.id === request.id
+          ? {
+              ...r,
+              status: 'DISPATCHED',
+              assigned_volunteer: {
+                id: volunteer.id,
+                full_name: volunteer.full_name,
+                phone_number: null,
+              },
+            }
+          : r,
+      ),
+    );
+    setNotice(
+      `${volunteer.full_name ?? 'Volunteer'} was assigned to request ${request.id.slice(0, 8)} and has been asked to accept.`,
+    );
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -131,6 +162,20 @@ export const Requests: React.FC = () => {
         {error && (
           <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-status-error)' }}>{error}</div>
         )}
+        {notice && (
+          <div
+            style={{
+              padding: '0.75rem 1rem',
+              margin: '0 0 1rem',
+              borderRadius: '0.375rem',
+              backgroundColor: 'var(--color-status-success-bg)',
+              color: 'var(--color-text-primary)',
+              fontSize: '0.875rem',
+            }}
+          >
+            {notice}
+          </div>
+        )}
         {!loading && !error && (
           <Table>
             <TableHead>
@@ -142,6 +187,7 @@ export const Requests: React.FC = () => {
                 <TableHeader>Status</TableHeader>
                 <TableHeader>Assigned Volunteer</TableHeader>
                 <TableHeader>Created</TableHeader>
+                <TableHeader>Actions</TableHeader>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -166,6 +212,16 @@ export const Requests: React.FC = () => {
                   </TableCell>
                   <TableCell>{req.assigned_volunteer?.full_name ?? '—'}</TableCell>
                   <TableCell style={{ color: 'var(--color-text-secondary)' }}>{formatDate(req.created_at)}</TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    {canAssign(req) ? (
+                      <Button size="sm" variant="outline" onClick={() => setAssignTarget(req)}>
+                        <UserCheck size={14} style={{ marginRight: '0.375rem' }} />
+                        Assign
+                      </Button>
+                    ) : (
+                      <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>—</span>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
               {filtered.length === 0 && (
@@ -181,6 +237,14 @@ export const Requests: React.FC = () => {
           </Table>
         )}
       </Card>
+
+      {assignTarget && (
+        <AssignVolunteerDialog
+          request={assignTarget}
+          onClose={() => setAssignTarget(null)}
+          onAssigned={(volunteer) => handleAssigned(assignTarget, volunteer)}
+        />
+      )}
     </div>
   );
 };

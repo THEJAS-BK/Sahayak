@@ -16,7 +16,9 @@
     "db:down": "tsx scripts/migrate.ts down",
     "db:reset": "tsx scripts/migrate.ts reset",
     "db:seed": "tsx scripts/seed.ts",
-    "db:seed:fresh": "tsx scripts/seed.ts --fresh"
+    "db:seed:fresh": "tsx scripts/seed.ts --fresh",
+    "e2e:real": "tsx scripts/e2e-real-flow.ts",
+    "e2e:assign": "tsx scripts/e2e-police-assign.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

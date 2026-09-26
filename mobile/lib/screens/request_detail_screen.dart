@@ -3,17 +3,25 @@ import '../models/help_request.dart';
 import '../theme/app_colors.dart';
 import '../widgets/status_badge.dart';
 
-/// Volunteer request detail — Accept / Decline (Figma Screen 3).
+/// Volunteer request detail for a nearby (DISPATCHED) request — Accept / Decline.
+///
+/// Only fields the backend actually returns are shown. The senior's name and
+/// phone are intentionally absent here: `/api/requests/:id` only exposes them
+/// to the volunteer once the request is assigned to them (BR-09).
 class RequestDetailScreen extends StatelessWidget {
   final HelpRequest request;
-  final VoidCallback onAccept;
-  final VoidCallback onDecline;
+  final bool isAvailable;
+  final bool isAccepting;
+  final Future<void> Function() onAccept;
+  final VoidCallback onSkip;
 
   const RequestDetailScreen({
     super.key,
     required this.request,
+    required this.isAvailable,
+    required this.isAccepting,
     required this.onAccept,
-    required this.onDecline,
+    required this.onSkip,
   });
 
   @override
@@ -40,11 +48,8 @@ class RequestDetailScreen extends StatelessWidget {
               ),
             ),
             Text(
-              request.id,
-              style: const TextStyle(
-                color: Color(0xFF94A3B8),
-                fontSize: 11,
-              ),
+              _shortId(request.id),
+              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
             ),
           ],
         ),
@@ -52,29 +57,34 @@ class RequestDetailScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _ProfileCard(request: request),
+          _HeaderCard(request: request),
           const SizedBox(height: 12),
-          if (request.priority == RequestPriority.high) ...[
-            const _HighPriorityBanner(),
+          if (request.priority == RequestPriority.urgent) ...[
+            const _UrgentBanner(),
             const SizedBox(height: 12),
           ],
           _DescriptionCard(request: request),
           const SizedBox(height: 12),
-          _MapPreviewCard(request: request),
+          _LocationCard(request: request),
           const SizedBox(height: 88),
         ],
       ),
       bottomNavigationBar: _StickyActions(
+        enabled: isAvailable,
+        busy: isAccepting,
         onAccept: onAccept,
-        onDecline: onDecline,
+        onSkip: onSkip,
       ),
     );
   }
 }
 
-class _ProfileCard extends StatelessWidget {
+String _shortId(String id) =>
+    id.length <= 8 ? id.toUpperCase() : id.substring(0, 8).toUpperCase();
+
+class _HeaderCard extends StatelessWidget {
   final HelpRequest request;
-  const _ProfileCard({required this.request});
+  const _HeaderCard({required this.request});
 
   @override
   Widget build(BuildContext context) {
@@ -90,14 +100,8 @@ class _ProfileCard extends StatelessWidget {
           CircleAvatar(
             radius: 28,
             backgroundColor: AppColors.senior.withAlpha(40),
-            child: Text(
-              request.initial,
-              style: const TextStyle(
-                color: AppColors.senior,
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            child: const Icon(Icons.elderly_rounded,
+                color: AppColors.senior, size: 26),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -108,7 +112,9 @@ class _ProfileCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        request.caller,
+                        request.category.isEmpty
+                            ? 'Help request'
+                            : request.category,
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
@@ -119,46 +125,32 @@ class _ProfileCard extends StatelessWidget {
                     PriorityBadge(priority: request.priority),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${request.age} yrs  ·  ${request.phone}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
                 const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(Icons.location_on_outlined,
-                        size: 14, color: AppColors.textSecondary),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        request.location,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ],
+                _Line(
+                  icon: Icons.fingerprint,
+                  text: 'Request ${_shortId(request.id)}',
                 ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.schedule_outlined,
-                        size: 14, color: AppColors.textSecondary),
-                    const SizedBox(width: 4),
-                    Text(
-                      request.time,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
+                if (request.status != null) ...[
+                  const SizedBox(height: 4),
+                  _Line(
+                    icon: Icons.info_outline,
+                    text: helpRequestStatusLabel(request.status!),
+                  ),
+                ],
+                if (request.createdLabel != null) ...[
+                  const SizedBox(height: 4),
+                  _Line(
+                    icon: Icons.schedule_outlined,
+                    text: 'Raised ${request.createdLabel}',
+                  ),
+                ],
+                if (request.source != null) ...[
+                  const SizedBox(height: 4),
+                  _Line(
+                    icon: Icons.record_voice_over_outlined,
+                    text: 'Source: ${request.source}',
+                  ),
+                ],
               ],
             ),
           ),
@@ -168,8 +160,34 @@ class _ProfileCard extends StatelessWidget {
   }
 }
 
-class _HighPriorityBanner extends StatelessWidget {
-  const _HighPriorityBanner();
+class _Line extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _Line({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: AppColors.textSecondary),
+        const SizedBox(width: 5),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _UrgentBanner extends StatelessWidget {
+  const _UrgentBanner();
 
   @override
   Widget build(BuildContext context) {
@@ -186,7 +204,7 @@ class _HighPriorityBanner extends StatelessWidget {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'HIGH priority — please respond as soon as you can.',
+              'URGENT priority — please respond as soon as you can.',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -206,6 +224,7 @@ class _DescriptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final chips = request.detailChips;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -217,7 +236,7 @@ class _DescriptionCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Request',
+            'What was asked',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
@@ -226,104 +245,122 @@ class _DescriptionCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            request.description,
+            request.description.isEmpty
+                ? 'No description was provided.'
+                : request.description,
             style: const TextStyle(
               fontSize: 13,
               height: 1.45,
               color: AppColors.textPrimary,
             ),
           ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: request.tags
-                .map(
-                  (tag) => Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppColors.scaffold,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppColors.divider),
-                    ),
-                    child: Text(
-                      tag,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary,
+          if (chips.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: chips
+                  .map(
+                    (chip) => Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.scaffold,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.divider),
+                      ),
+                      child: Text(
+                        chip,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ),
-                  ),
-                )
-                .toList(),
-          ),
+                  )
+                  .toList(),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _MapPreviewCard extends StatelessWidget {
+class _LocationCard extends StatelessWidget {
   final HelpRequest request;
-  const _MapPreviewCard({required this.request});
+  const _LocationCard({required this.request});
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.cardWhite,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.divider),
       ),
-      clipBehavior: Clip.antiAlias,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            height: 140,
-            width: double.infinity,
-            color: const Color(0xFFDCE8F5),
-            child: Stack(
-              alignment: Alignment.center,
+          const Text(
+            'Location',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (request.coordinateLabel == null)
+            const Text(
+              'No coordinates were captured for this request.',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            )
+          else ...[
+            Row(
               children: [
-                const Icon(Icons.map_outlined,
-                    size: 64, color: Color(0xFF94A3B8)),
-                Positioned(
-                  child: Icon(Icons.location_on,
-                      size: 36, color: AppColors.senior.withAlpha(220)),
+                const Icon(Icons.location_on_outlined,
+                    size: 16, color: AppColors.senior),
+                const SizedBox(width: 6),
+                Text(
+                  request.coordinateLabel!,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ],
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-            child: Row(
-              children: [
-                const Icon(Icons.near_me_outlined,
-                    size: 18, color: AppColors.accentBlue),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    request.location,
+            if (request.distanceLabel != null) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  const Icon(Icons.near_me_outlined,
+                      size: 16, color: AppColors.accentBlue),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${request.distanceLabel} from your registered base',
                     style: const TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
+                      color: AppColors.textSecondary,
                     ),
                   ),
-                ),
-                Text(
-                  request.distance,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.accentBlue,
-                  ),
-                ),
-              ],
+                ],
+              ),
+            ],
+            const SizedBox(height: 10),
+            const Text(
+              'Addresses are not shared before a request is accepted.',
+              style: TextStyle(
+                fontSize: 11,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -331,10 +368,17 @@ class _MapPreviewCard extends StatelessWidget {
 }
 
 class _StickyActions extends StatelessWidget {
-  final VoidCallback onAccept;
-  final VoidCallback onDecline;
+  final bool enabled;
+  final bool busy;
+  final Future<void> Function() onAccept;
+  final VoidCallback onSkip;
 
-  const _StickyActions({required this.onAccept, required this.onDecline});
+  const _StickyActions({
+    required this.enabled,
+    required this.busy,
+    required this.onAccept,
+    required this.onSkip,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -359,18 +403,31 @@ class _StickyActions extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  icon: const Icon(Icons.check_rounded, size: 20),
+                  icon: busy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.check_rounded, size: 20),
                   label: const Text(
                     'Accept Request',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                   ),
-                  onPressed: onAccept,
+                  onPressed: enabled && !busy ? onAccept : null,
                 ),
               ),
+              const SizedBox(height: 4),
+              if (!enabled)
+                const Text(
+                  'Turn on availability to accept requests.',
+                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                ),
               TextButton(
-                onPressed: onDecline,
+                onPressed: onSkip,
                 child: const Text(
-                  'Decline Request',
+                  'Decline this request',
                   style: TextStyle(
                     color: AppColors.error,
                     fontWeight: FontWeight.w700,

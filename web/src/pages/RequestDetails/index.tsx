@@ -3,9 +3,10 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import { AssignVolunteerDialog } from '../../components/AssignVolunteerDialog';
 import { fetchRequestDetail } from '../../api/client';
 import { priorityLabel, type PoliceRequest, type RequestStatus } from '../../api/types';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, UserCheck } from 'lucide-react';
 
 const statusBadgeVariant: Record<RequestStatus, 'success' | 'warning' | 'error' | 'default'> = {
   COMPLETED: 'success',
@@ -24,6 +25,25 @@ const categoryLabels: Record<string, string> = {
   transport_assistance: 'Transport Assistance',
 };
 
+const detailLabels: Record<string, string> = {
+  items: 'Items',
+  symptom: 'Symptom',
+  symptoms: 'Symptoms',
+  destination: 'Going to',
+};
+
+const formatValue = (value: unknown): string =>
+  Array.isArray(value) ? value.map((v) => String(v)).join(', ') : String(value);
+
+/** Extras the voice agent captured (items / symptom / destination). */
+function detailEntries(details: unknown): Array<[string, string]> {
+  if (details == null || typeof details !== 'object' || Array.isArray(details)) return [];
+  return Object.entries(details as Record<string, unknown>).map(([key, value]) => [
+    detailLabels[key] ?? key,
+    formatValue(value),
+  ]);
+}
+
 const formatDate = (iso: string) => new Date(iso).toLocaleString(undefined, {
   dateStyle: 'medium',
   timeStyle: 'short',
@@ -34,6 +54,12 @@ interface TimelineEntry {
   at: string;
   note: string;
 }
+
+/** A request police may still hand to a named volunteer (BR-04, ASSIGNABLE_STATUSES). */
+const ASSIGNABLE: RequestStatus[] = ['PENDING', 'MATCHING', 'DISPATCHED'];
+
+const canAssign = (request: PoliceRequest): boolean =>
+  ASSIGNABLE.includes(request.status) && request.assigned_volunteer === null;
 
 function buildTimeline(request: PoliceRequest): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
@@ -52,6 +78,8 @@ export const RequestDetails: React.FC = () => {
   const [request, setRequest] = useState<PoliceRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!requestId) return;
@@ -84,6 +112,9 @@ export const RequestDetails: React.FC = () => {
   }
 
   const timeline = buildTimeline(request);
+  const extras = detailEntries(request.details);
+  const senior = request.senior;
+  const volunteer = request.assigned_volunteer;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -92,13 +123,33 @@ export const RequestDetails: React.FC = () => {
         Back to Requests
       </Button>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: '1.875rem', fontWeight: 700, margin: 0 }}>Request {request.id}</h1>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <Badge variant={request.priority === 'urgent' ? 'error' : 'default'}>{priorityLabel(request.priority)}</Badge>
           <Badge variant={statusBadgeVariant[request.status]}>{request.status}</Badge>
+          {canAssign(request) && (
+            <Button size="sm" onClick={() => setAssignOpen(true)}>
+              <UserCheck size={14} style={{ marginRight: '0.375rem' }} />
+              Assign volunteer
+            </Button>
+          )}
         </div>
       </div>
+
+      {notice && (
+        <div
+          style={{
+            padding: '0.75rem 1rem',
+            borderRadius: '0.375rem',
+            backgroundColor: 'var(--color-status-success-bg)',
+            color: 'var(--color-text-primary)',
+            fontSize: '0.875rem',
+          }}
+        >
+          {notice}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
         <Card>
@@ -106,9 +157,13 @@ export const RequestDetails: React.FC = () => {
             <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>Senior</h2>
           </div>
           <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <span style={{ fontWeight: 600, fontSize: '1rem' }}>{request.senior.full_name}</span>
-            <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>{request.senior.phone_number}</span>
-            <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>{request.senior.email}</span>
+            <span style={{ fontWeight: 600, fontSize: '1rem' }}>{senior.full_name ?? 'Name not recorded'}</span>
+            {senior.phone_number && (
+              <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>{senior.phone_number}</span>
+            )}
+            {senior.email && (
+              <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>{senior.email}</span>
+            )}
           </div>
         </Card>
 
@@ -119,6 +174,9 @@ export const RequestDetails: React.FC = () => {
           <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.875rem' }}>
             <div><span style={{ color: 'var(--color-text-secondary)' }}>Category: </span>{categoryLabels[request.category] ?? request.category}</div>
             <div><span style={{ color: 'var(--color-text-secondary)' }}>Description: </span>{request.description}</div>
+            {extras.map(([label, value]) => (
+              <div key={label}><span style={{ color: 'var(--color-text-secondary)' }}>{label}: </span>{value}</div>
+            ))}
             <div><span style={{ color: 'var(--color-text-secondary)' }}>Source: </span>{request.source}</div>
             <div><span style={{ color: 'var(--color-text-secondary)' }}>Created: </span>{formatDate(request.created_at)}</div>
             {request.latitude != null && request.longitude != null && (
@@ -133,16 +191,22 @@ export const RequestDetails: React.FC = () => {
           <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>Volunteer</h2>
         </div>
         <div style={{ padding: '1.5rem', fontSize: '0.875rem' }}>
-          {request.assigned_volunteer ? (
+          {volunteer ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <span style={{ fontWeight: 600 }}>{request.assigned_volunteer.full_name}</span>
-              <span style={{ color: 'var(--color-text-secondary)' }}>{request.assigned_volunteer.phone_number}</span>
-              {request.assigned_volunteer.organization && (
-                <span style={{ color: 'var(--color-text-secondary)' }}>{request.assigned_volunteer.organization}</span>
+              <span style={{ fontWeight: 600 }}>{volunteer.full_name ?? 'Name not recorded'}</span>
+              {volunteer.phone_number && (
+                <span style={{ color: 'var(--color-text-secondary)' }}>{volunteer.phone_number}</span>
+              )}
+              {volunteer.organization && (
+                <span style={{ color: 'var(--color-text-secondary)' }}>{volunteer.organization}</span>
               )}
             </div>
           ) : (
-            <span style={{ color: 'var(--color-text-secondary)' }}>No volunteer assigned yet.</span>
+            <span style={{ color: 'var(--color-text-secondary)' }}>
+              {canAssign(request)
+                ? 'No volunteer assigned yet. You can assign one by hand.'
+                : 'No volunteer assigned yet.'}
+            </span>
           )}
         </div>
       </Card>
@@ -171,6 +235,31 @@ export const RequestDetails: React.FC = () => {
             ))}
           </div>
         </Card>
+      )}
+
+      {assignOpen && request && (
+        <AssignVolunteerDialog
+          request={request}
+          onClose={() => setAssignOpen(false)}
+          onAssigned={(volunteer) => {
+            setRequest((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    status: 'DISPATCHED',
+                    assigned_volunteer: {
+                      id: volunteer.id,
+                      full_name: volunteer.full_name,
+                      phone_number: volunteer.phone_number,
+                    },
+                  }
+                : prev,
+            );
+            setNotice(
+              `${volunteer.full_name ?? 'Volunteer'} was assigned and has been asked to accept.`,
+            );
+          }}
+        />
       )}
     </div>
   );

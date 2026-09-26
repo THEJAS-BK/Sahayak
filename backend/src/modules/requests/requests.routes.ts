@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { z } from 'zod'
+import { config } from '../../config/index.js'
 import { errors } from '../../lib/errors.js'
 import { asyncHandler, ok } from '../../lib/http.js'
 import { logger } from '../../lib/logger.js'
@@ -10,6 +11,7 @@ import {
   acceptRequest,
   cancelRequest,
   createRequest,
+  declineRequest,
   getRequest,
   getVolunteerContact,
   listMyRequests,
@@ -40,6 +42,18 @@ router.post(
     if (!parsed.success) throw errors.badRequest('Invalid help request')
 
     logger.info('[voice] help request', { userId: req.user!.id, request: parsed.data })
+
+    // Dry run: print the body and acknowledge without persisting, dispatching or
+    // notifying. Enabled with REQUESTS_DRY_RUN=true while the mobile review
+    // flow is being built; remove the block once real requests are wanted.
+    if (config.requests.dryRun) {
+      console.log(
+        `\n[requests] DRY RUN — POST /api/requests from ${req.user!.id} (${req.user!.role}) at ${new Date().toISOString()}\n` +
+          JSON.stringify(parsed.data, null, 2),
+      )
+      ok(res, { dry_run: true, request_id: null, status: 'PENDING', dispatched_to: [] }, 201)
+      return
+    }
 
     const pending = await pool.query(
       `SELECT 1 FROM help_requests WHERE senior_id = $1 AND status IN ('PENDING','MATCHING','DISPATCHED','ACCEPTED','IN_PROGRESS') LIMIT 1`,
@@ -153,6 +167,29 @@ router.patch(
     void notifyRequestAccepted({ email: row.email, fcmToken: row.fcm_token }, row.full_name)
 
     ok(res, accepted)
+  }),
+)
+
+const declineSchema = z.object({ reason: z.string().trim().max(280).optional() })
+
+/**
+ * Q-05 sibling: turn down a request you were offered. The request stays
+ * DISPATCHED for other volunteers; the senior is not notified, because nothing
+ * has failed yet.
+ */
+router.patch(
+  '/:id/decline',
+  authenticate,
+  requireRole('volunteer'),
+  requireActive,
+  asyncHandler(async (req, res) => {
+    const id = String(req.params.id)
+    const body = declineSchema.safeParse(req.body ?? {})
+    if (!body.success) throw errors.badRequest('Invalid decline payload')
+    const declined = await withTransaction((db) =>
+      declineRequest(db, req.user as { id: string }, id, body.data.reason),
+    )
+    ok(res, declined)
   }),
 )
 

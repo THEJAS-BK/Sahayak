@@ -25,8 +25,9 @@ Deliverables:
 - `src/lib/` — `http.ts` (envelope helpers + `ApiError` + codes + status map),
   `async-handler.ts`, `logger.ts`.
 - `src/app.ts` — register error-handling + 404 middleware; keep `/health`.
-- `docker-compose.yml` (postgres:18, db `sahayak`, port 5432) + npm scripts
-  `db:up` / `db:migrate` / `db:reset`.
+- `docker-compose.yml` (postgres:18, db `sahayak`) + npm scripts `db:up` /
+  `db:migrate` / `db:reset`. See `plans/pg-db-connection.md` for which local
+  instance the backend actually uses.
 - Migration #1: `citext` ext + `set_updated_at()` trigger.
 - `vitest.config.ts` + global setup (test database create/teardown).
 - `.env.example`.
@@ -134,10 +135,12 @@ also logged in `decisions.md`):
 - Notifications target a dev-stub FCM sender (log-and-continue) and a fixed
   police topic token; SMTP is stubbed with `sentEmails` capture for tests.
 - **Dev seeding (post-ship):** `backend/scripts/seed.ts` (`npm run db:seed` /
-  `db:seed:fresh`) loads the `data/` personas — police officer, 5 seniors,
-  4 volunteers, 3 pending registrations, requests in every state, emergencies
-  and audit logs — into the dev database with `now()`-relative timestamps.
-  Added for frontend/demo development; the test suite stays fixture-driven and
+  `db:seed:fresh`) now bootstraps only the single police account from
+  `POLICE_BOOTSTRAP_EMAIL` (dev value `police@gmail.com`); the fabricated
+  senior/volunteer/pending-registration personas, requests, emergencies and
+  audit logs were dropped, so the dev database starts empty apart from that
+  officer. Seniors and volunteers are created by registering in the mobile app
+  and being approved in the portal. The test suite stays fixture-driven and
   unchanged (`database-design.md` "Migration strategy" for details).
 - Final check: `npm run build` clean, `npm run typecheck` clean, 47/47 tests
   across 5 suites (`auth`, `registration`, `requests`, `emergency`, plus the

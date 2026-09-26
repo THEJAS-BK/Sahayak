@@ -54,6 +54,38 @@ export interface RequestListResult {
   next_cursor: string | null;
 }
 
+/** A volunteer a police officer can hand a request to (P-02). */
+export interface AssignableVolunteer {
+  id: string;
+  email: string;
+  full_name: string | null;
+  phone_number: string | null;
+  organization: string | null;
+  skills: string[];
+  is_available: boolean;
+  is_verified: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  distance_m: number | null;
+  has_active_assignment: boolean;
+  active_request_id: string | null;
+  /** Server-side verdict for P-05: approved, on duty, not already on a job. */
+  can_assign: boolean;
+}
+
+export interface AssignableVolunteerListResult {
+  volunteers: AssignableVolunteer[];
+  next_cursor: string | null;
+}
+
+export interface PoliceAssignmentResult {
+  request_id: string;
+  status: RequestStatus;
+  category: string;
+  volunteer: { id: string; full_name: string | null; phone_number: string | null; email: string };
+  senior: { id: string; full_name: string | null; phone_number: string | null; email: string };
+}
+
 export interface VerificationSummary {
   id: string;
   email: string;

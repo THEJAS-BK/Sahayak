@@ -4,7 +4,6 @@ import { Button } from '../../components/ui/Button';
 import { requestOtp, setSession, verifyOtp } from '../../api/client';
 import { ShieldCheck } from 'lucide-react';
 
-const DEV_POLICE_EMAIL = 'ashok.kini@example.com';
 const DEV_OTP_CODE = '123456';
 
 const inputStyle: React.CSSProperties = {
@@ -21,7 +20,7 @@ const inputStyle: React.CSSProperties = {
 export const Login: React.FC = () => {
   const navigate = useNavigate();
   const [mode, setMode] = useState<'otp' | 'token'>('otp');
-  const [email, setEmail] = useState(DEV_POLICE_EMAIL);
+  const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [codeSent, setCodeSent] = useState(false);
   const [tokenValue, setTokenValue] = useState('');
@@ -165,7 +164,7 @@ export const Login: React.FC = () => {
               </Button>
             )}
             <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', margin: 0 }}>
-              Dev OTP code (OTP_DEV_CODE) is <code>{DEV_OTP_CODE}</code>. Default police account: {DEV_POLICE_EMAIL}.
+              Dev OTP code (OTP_DEV_CODE) is <code>{DEV_OTP_CODE}</code>.
             </p>
           </div>
         ) : (

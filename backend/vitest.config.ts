@@ -15,6 +15,11 @@ export default defineConfig({
       NODE_ENV: 'test',
       DATABASE_URL: testUrl,
       DATABASE_URL_TEST: testUrl,
+      // Tests exercise the real request pipeline, whatever the local .env says.
+      REQUESTS_DRY_RUN: 'false',
+      // Likewise: A-01 asserts the OTP issuance limit, so the dev escape hatch
+      // in .env must not disable it here.
+      RATE_LIMIT_DISABLED: 'false',
     },
   },
 })
