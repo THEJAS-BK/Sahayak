@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/help_request.dart';
+import '../services/api_client.dart';
+import '../services/requests_service.dart';
 import '../theme/app_colors.dart';
 
-/// Shown right after the volunteer accepts a request (Figma Screen 4).
+/// Assignment view for a request the volunteer has accepted.
+///
+/// The three steps map 1:1 to the server state machine
+/// (ACCEPTED -> IN_PROGRESS -> COMPLETED, Q-06) — there is no fake "arrived"
+/// step and no local-only cancel, because the backend exposes neither.
 class RequestAcceptedScreen extends StatefulWidget {
   final HelpRequest request;
 
@@ -13,13 +20,66 @@ class RequestAcceptedScreen extends StatefulWidget {
 }
 
 class _RequestAcceptedScreenState extends State<RequestAcceptedScreen> {
-  /// 0 = Accepted, 1 = En Route, 2 = Arrived, 3 = Completed
-  int _step = 1;
+  late HelpRequest _request = widget.request;
+  late HelpRequestStatus? _status = widget.request.status;
+  bool _busy = false;
+  String? _error;
 
-  HelpRequest get request => widget.request;
+  static const _steps = [
+    HelpRequestStatus.accepted,
+    HelpRequestStatus.inProgress,
+    HelpRequestStatus.completed,
+  ];
+
+  int get _stepIndex {
+    final status = _status;
+    if (status == null) return 0;
+    final index = _steps.indexOf(status);
+    return index < 0 ? 0 : index;
+  }
+
+  Future<void> _advance(HelpRequestStatus target) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await RequestsService.instance.setStatus(_request.id, target);
+      // Re-read from the server so the screen always shows stored state.
+      final fresh = await RequestsService.instance.detail(_request.id);
+      if (!mounted) return;
+      setState(() {
+        _request = fresh;
+        _status = fresh.status;
+        _busy = false;
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text('Marked as ${helpRequestStatusLabel(target)}'),
+          backgroundColor: AppColors.success,
+        ));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = 'Could not reach the server.';
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final next = _stepIndex < _steps.length - 1 ? _steps[_stepIndex + 1] : null;
+    final done = _status == HelpRequestStatus.completed;
+
     return Scaffold(
       backgroundColor: AppColors.scaffold,
       appBar: AppBar(
@@ -31,7 +91,7 @@ class _RequestAcceptedScreenState extends State<RequestAcceptedScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
-          'Request Accepted',
+          'Your Assignment',
           style: TextStyle(
             color: Colors.white,
             fontSize: 17,
@@ -58,8 +118,8 @@ class _RequestAcceptedScreenState extends State<RequestAcceptedScreen> {
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.check_rounded,
+              child: Icon(
+                done ? Icons.task_alt_rounded : Icons.check_rounded,
                 color: AppColors.success,
                 size: 48,
               ),
@@ -67,7 +127,9 @@ class _RequestAcceptedScreenState extends State<RequestAcceptedScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'You have agreed to help ${request.caller}. Please reach the location within ${request.deadline}.',
+            done
+                ? 'You completed the request for ${_seniorLabel()}.'
+                : 'You have agreed to help ${_seniorLabel()}.',
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 15,
@@ -77,101 +139,171 @@ class _RequestAcceptedScreenState extends State<RequestAcceptedScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          _SummaryCard(request: request),
+          _ContactCard(request: _request),
           const SizedBox(height: 16),
-          _Timeline(step: _step),
+          _SummaryCard(request: _request),
+          const SizedBox(height: 16),
+          _Timeline(step: _stepIndex),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFE4E6),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.error.withAlpha(60)),
+              ),
+              child: Text(
+                _error!,
+                style: const TextStyle(fontSize: 12, color: AppColors.error),
+              ),
+            ),
+          ],
           const SizedBox(height: 100),
         ],
       ),
-      bottomNavigationBar: Material(
-        elevation: 8,
-        color: AppColors.cardWhite,
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.accentBlue,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    icon: const Icon(Icons.directions_outlined, size: 20),
-                    label: const Text(
-                      'Get Directions',
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                    ),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                              'Directions to ${request.location} (${request.distance}).'),
+      bottomNavigationBar: next == null
+          ? null
+          : Material(
+              elevation: 8,
+              color: AppColors.cardWhite,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.accentBlue,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          icon: _busy
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white),
+                                )
+                              : Icon(
+                                  next == HelpRequestStatus.inProgress
+                                      ? Icons.directions_walk_rounded
+                                      : Icons.task_alt_rounded,
+                                  size: 20,
+                                ),
+                          label: Text(
+                            next == HelpRequestStatus.inProgress
+                                ? 'Start the job'
+                                : 'Mark as completed',
+                            style: const TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w700),
+                          ),
+                          onPressed: _busy ? null : () => _advance(next),
                         ),
-                      );
-                    },
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.accentBlue,
-                      side: const BorderSide(color: AppColors.accentBlue),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: _step >= 2
-                        ? null
-                        : () {
-                            setState(() => _step = 2);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Marked as arrived.'),
-                                backgroundColor: AppColors.success,
-                              ),
-                            );
-                          },
-                    child: const Text(
-                      'Mark as Arrived',
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                    ),
+              ),
+            ),
+    );
+  }
+
+  String _seniorLabel() {
+    final name = _request.seniorName;
+    if (name == null || name.isEmpty) return 'the senior';
+    return name;
+  }
+}
+
+/// Senior contact becomes visible only after the server assigns the request.
+/// Opens the platform dialer with the number the API returned.  The button is
+/// only rendered when the backend actually shared a phone number.
+Future<void> _call(BuildContext context, String phone) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final uri = Uri(scheme: 'tel', path: phone);
+  var launched = false;
+  try {
+    launched = await launchUrl(uri);
+  } catch (_) {
+    launched = false;
+  }
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(
+      content: Text(
+        launched ? 'Opening the dialer for $phone' : 'No dialer available on this device',
+      ),
+    ));
+}
+
+class _ContactCard extends StatelessWidget {
+  final HelpRequest request;
+  const _ContactCard({required this.request});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = request.seniorName;
+    final phone = request.seniorPhone;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: AppColors.senior.withAlpha(40),
+            child: Text(
+              name == null || name.isEmpty ? '?' : name[0].toUpperCase(),
+              style: const TextStyle(
+                color: AppColors.senior,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name ?? 'Senior',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
                   ),
                 ),
-                TextButton(
-                  onPressed: () {
-                    final messenger = ScaffoldMessenger.of(context);
-                    Navigator.of(context).pop();
-                    messenger.showSnackBar(
-                      const SnackBar(
-                        content: Text('Assignment cancelled for this demo.'),
-                      ),
-                    );
-                  },
-                  child: const Text(
-                    'Cancel',
-                    style: TextStyle(
-                      color: AppColors.error,
-                      fontWeight: FontWeight.w700,
-                    ),
+                const SizedBox(height: 2),
+                Text(
+                  phone ?? 'Phone not shared',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ],
             ),
           ),
-        ),
+          if (phone != null)
+            IconButton(
+              tooltip: 'Call senior',
+              onPressed: () => _call(context, phone),
+              icon: const Icon(Icons.call_rounded, color: AppColors.success),
+            ),
+        ],
       ),
     );
   }
@@ -192,16 +324,38 @@ class _SummaryCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _row(Icons.location_on_outlined, 'Location', request.location),
+          _row(Icons.medical_services_outlined, 'Task',
+              request.category.isEmpty ? 'Help request' : request.category),
           const Divider(height: 20, color: AppColors.divider),
-          _row(Icons.timer_outlined, 'Deadline', request.deadline),
+          _row(
+            Icons.location_on_outlined,
+            'Location',
+            request.coordinateLabel ?? 'Not captured',
+          ),
           const Divider(height: 20, color: AppColors.divider),
-          _row(Icons.task_alt_outlined, 'Task', request.category),
-          const Divider(height: 20, color: AppColors.divider),
-          _row(Icons.straighten, 'Distance', request.distance),
+          _row(
+            Icons.flag_outlined,
+            'Priority',
+            requestPriorityLabel(request.priority),
+          ),
+          if (request.acceptedAt != null) ...[
+            const Divider(height: 20, color: AppColors.divider),
+            _row(Icons.schedule_outlined, 'Accepted at',
+                _clock(request.acceptedAt!)),
+          ],
+          if (request.description.isNotEmpty) ...[
+            const Divider(height: 20, color: AppColors.divider),
+            _row(Icons.notes_outlined, 'Details', request.description),
+          ],
         ],
       ),
     );
+  }
+
+  static String _clock(DateTime value) {
+    final h = value.hour.toString().padLeft(2, '0');
+    final m = value.minute.toString().padLeft(2, '0');
+    return '$h:$m';
   }
 
   Widget _row(IconData icon, String label, String value) {
@@ -213,8 +367,8 @@ class _SummaryCard extends StatelessWidget {
           label,
           style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
         ),
-        const Spacer(),
-        Flexible(
+        const SizedBox(width: 12),
+        Expanded(
           child: Text(
             value,
             textAlign: TextAlign.right,
@@ -234,7 +388,7 @@ class _Timeline extends StatelessWidget {
   final int step;
   const _Timeline({required this.step});
 
-  static const _labels = ['Accepted', 'En Route', 'Arrived', 'Completed'];
+  static const _labels = ['Accepted', 'In progress', 'Completed'];
 
   @override
   Widget build(BuildContext context) {

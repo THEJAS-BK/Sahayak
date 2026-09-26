@@ -125,6 +125,22 @@ class VoiceCallController extends ChangeNotifier {
     }
   }
 
+  /// Turns the local microphone on or off without ending the call.
+  ///
+  /// Used while a senior is reading a request summary: the agent keeps the room
+  /// but stops hearing them. No-op when there is no live room.
+  Future<void> setMicrophoneEnabled(bool enabled) async {
+    final participant = _room?.localParticipant;
+    if (participant == null) return;
+    try {
+      await participant.setMicrophoneEnabled(enabled);
+    } catch (_) {
+      _onMessage?.call(enabled
+          ? 'Could not turn the microphone back on.'
+          : 'Could not mute the microphone.');
+    }
+  }
+
   /// Ends the call and disconnects from the room.
   Future<void> stop() async {
     if (_busy) return;

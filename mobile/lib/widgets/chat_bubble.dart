@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/agent_service.dart';
+import '../models/message.dart';
 import '../theme/app_colors.dart';
 
 /// A single chat bubble with message text and a timestamp footer.

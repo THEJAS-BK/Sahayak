@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import '../services/api_client.dart';
+import '../services/emergency_service.dart';
+import '../services/profile_service.dart';
+import '../services/session_service.dart';
 import '../services/user_session.dart';
 import '../theme/app_colors.dart';
 import '../widgets/sahayak_app_bar.dart';
@@ -17,6 +21,7 @@ class _SeniorHomeScreenState extends State<SeniorHomeScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _pulse;
   late final Animation<double> _scale;
+  bool _sendingSos = false;
 
   @override
   void initState() {
@@ -36,7 +41,52 @@ class _SeniorHomeScreenState extends State<SeniorHomeScreen>
     super.dispose();
   }
 
+  /// Files a real SOS event (E-01) at the senior's registered home location.
+  Future<void> _sendSos() async {
+    if (_sendingSos) return;
+    setState(() => _sendingSos = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final id = await EmergencyService.instance.triggerSos();
+      if (!mounted) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(
+            id.isEmpty
+                ? 'SOS sent to the police desk.'
+                : 'SOS sent to the police desk (ref $id).',
+          ),
+          backgroundColor: AppColors.error,
+        ));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('SOS not sent: ${e.message}')));
+    } catch (_) {
+      if (!mounted) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+            const SnackBar(content: Text('SOS not sent. Check your connection.')));
+    } finally {
+      if (mounted) setState(() => _sendingSos = false);
+    }
+  }
+
+  /// The app has exactly one request channel: the voice agent.  These tiles
+  /// open it instead of pretending to submit a form.
+  void _openAgent(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AgentConversationScreen()),
+    );
+  }
+
   void _logout(BuildContext context) async {
+    await SessionService.instance.clear();
+    ProfileService.instance.clearCache();
     await UserSession.clear();
     if (!context.mounted) return;
     Navigator.pushAndRemoveUntil(
@@ -174,23 +224,23 @@ class _SeniorHomeScreenState extends State<SeniorHomeScreen>
                 children: [
                   _QuickAction(
                     icon: Icons.emergency_outlined,
-                    label: 'Emergency',
+                    label: _sendingSos ? 'Sending...' : 'SOS',
                     color: AppColors.error,
-                    onTap: () {},
+                    onTap: _sendingSos ? () {} : _sendSos,
                   ),
                   const SizedBox(width: 10),
                   _QuickAction(
                     icon: Icons.medication_outlined,
                     label: 'Medication',
                     color: AppColors.accentBlue,
-                    onTap: () {},
+                    onTap: () => _openAgent(context),
                   ),
                   const SizedBox(width: 10),
                   _QuickAction(
                     icon: Icons.directions_car_outlined,
                     label: 'Transport',
                     color: AppColors.volunteer,
-                    onTap: () {},
+                    onTap: () => _openAgent(context),
                   ),
                 ],
               ),

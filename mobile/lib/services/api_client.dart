@@ -24,9 +24,17 @@ class ApiException implements Exception {
 /// - Unwraps the `{ success, data, error }` envelope.
 /// - Retries once after refreshing the access token on a 401.
 class ApiClient {
-  ApiClient._();
+  /// Public for test doubles; the app uses [instance].
+  ApiClient();
 
-  static final ApiClient instance = ApiClient._();
+  static final ApiClient _defaultInstance = ApiClient();
+  static ApiClient? _override;
+
+  static ApiClient get instance => _override ?? _defaultInstance;
+
+  /// Test seam — point the app at a fake transport.
+  // ignore: use_setters_to_change_properties
+  static set overrideForTest(ApiClient? client) => _override = client;
 
   final http.Client _http = http.Client();
 
@@ -58,6 +66,42 @@ class ApiClient {
         final newToken = SessionService.instance.accessToken;
         response = await _http
             .post(
+              _uri(path),
+              headers: {
+                'Content-Type': 'application/json',
+                if (newToken != null) 'Authorization': 'Bearer $newToken'
+              },
+              body: requestBody,
+            )
+            .timeout(_timeout);
+      }
+    }
+
+    return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> patch(String path,
+      {Map<String, dynamic>? body}) async {
+    final requestBody = jsonEncode(body ?? <String, dynamic>{});
+    final token = SessionService.instance.accessToken;
+
+    var response = await _http
+        .patch(
+          _uri(path),
+          headers: {
+            'Content-Type': 'application/json',
+            if (token != null) 'Authorization': 'Bearer $token'
+          },
+          body: requestBody,
+        )
+        .timeout(_timeout);
+
+    if (response.statusCode == 401 && token != null && token.isNotEmpty) {
+      final refreshed = await refresh();
+      if (refreshed) {
+        final newToken = SessionService.instance.accessToken;
+        response = await _http
+            .patch(
               _uri(path),
               headers: {
                 'Content-Type': 'application/json',
@@ -109,9 +153,14 @@ class ApiClient {
           .timeout(_timeout);
       if (res.statusCode == 200) {
         final data = _decode(res);
+        final user = data['user'] is Map<String, dynamic>
+            ? data['user'] as Map<String, dynamic>
+            : const <String, dynamic>{};
         await SessionService.instance.updateTokens(
           data['access_token']?.toString() ?? '',
           data['refresh_token']?.toString(),
+          role: user['role']?.toString(),
+          isActive: user['is_active'] as bool?,
         );
         return true;
       }

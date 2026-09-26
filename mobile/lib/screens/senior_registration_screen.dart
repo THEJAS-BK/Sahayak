@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../services/api_client.dart';
+import '../services/registration_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/primary_button.dart';
 import 'registration_submitted_screen.dart';
@@ -15,25 +17,69 @@ class _SeniorRegistrationScreenState extends State<SeniorRegistrationScreen> {
   final _nameController     = TextEditingController();
   final _phoneController    = TextEditingController();
   final _aadhaarController  = TextEditingController();
+  final _latController      = TextEditingController();
+  final _lngController      = TextEditingController();
 
-  void _submit() {
-    if (_nameController.text.trim().isEmpty ||
-        _phoneController.text.trim().isEmpty ||
-        _aadhaarController.text.trim().isEmpty) {
+  String _language = 'kannada';
+  bool _submitting = false;
+
+  static const _languages = {
+    'kannada': 'Kannada',
+    'english': 'English',
+    'tulu': 'Tulu',
+  };
+
+  Future<void> _submit() async {
+    final name = _nameController.text.trim();
+    final phone = _phoneController.text.trim();
+    final aadhaar = _aadhaarController.text.replaceAll(RegExp(r'\s'), '');
+    final lat = double.tryParse(_latController.text.trim());
+    final lng = double.tryParse(_lngController.text.trim());
+
+    if (name.isEmpty || phone.isEmpty || aadhaar.length != 12) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Fill in name, phone and Aadhaar number')),
+        const SnackBar(content: Text('Fill in name, phone and the 12-digit Aadhaar number')),
+      );
+      return;
+    }
+    if (lat == null || lng == null || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid home latitude and longitude')),
       );
       return;
     }
 
-    // TODO: submit form data to backend for police verification.
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            const RegistrationSubmittedScreen(role: UserRole.senior),
-      ),
-    );
+    setState(() => _submitting = true);
+    try {
+      await RegistrationService.instance.submitSenior(
+        fullName: name,
+        phoneNumber: phone,
+        aadhaarNumber: aadhaar,
+        latitude: lat,
+        longitude: lng,
+        language: _language,
+      );
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              const RegistrationSubmittedScreen(role: UserRole.senior),
+        ),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not submit: ${e.message}')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not reach the server.')),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   @override
@@ -41,6 +87,8 @@ class _SeniorRegistrationScreenState extends State<SeniorRegistrationScreen> {
     _nameController.dispose();
     _phoneController.dispose();
     _aadhaarController.dispose();
+    _latController.dispose();
+    _lngController.dispose();
     super.dispose();
   }
 
@@ -114,13 +162,76 @@ class _SeniorRegistrationScreenState extends State<SeniorRegistrationScreen> {
             ],
           ),
 
+          const SizedBox(height: 16),
+
+          // ── Home location section ──────────────────────────────────
+          _SectionCard(
+            title: 'Home Location',
+            icon: Icons.place_outlined,
+            iconColor: AppColors.senior,
+            children: [
+              const Text(
+                'Volunteers are matched using this location, and it is used as '
+                'the pickup point for every request you make.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _FormField(
+                      controller: _latController,
+                      label: 'Latitude',
+                      icon: Icons.explore_outlined,
+                      inputType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _FormField(
+                      controller: _lngController,
+                      label: 'Longitude',
+                      icon: Icons.explore_outlined,
+                      inputType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // ── Language section ───────────────────────────────────────
+          _SectionCard(
+            title: 'Preferred Language',
+            icon: Icons.translate_rounded,
+            iconColor: AppColors.accentBlue,
+            children: [
+              Wrap(
+                spacing: 8,
+                children: _languages.entries
+                    .map((e) => ChoiceChip(
+                          label: Text(e.value),
+                          selected: _language == e.key,
+                          onSelected: (_) => setState(() => _language = e.key),
+                        ))
+                    .toList(),
+              ),
+            ],
+          ),
+
           const SizedBox(height: 24),
 
           PrimaryButton(
-            label: 'Submit for Verification',
+            label: _submitting ? 'Submitting...' : 'Submit for Verification',
             color: AppColors.senior,
             icon: Icons.send_outlined,
-            onPressed: _submit,
+            onPressed: _submitting ? null : _submit,
           ),
         ],
       ),

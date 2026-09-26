@@ -54,7 +54,8 @@ class _SplashScreenState extends State<SplashScreen>
     } else if (role == 'senior') {
       destination = const SeniorHomeScreen();
     } else {
-      // Dev fallback — local session marker set by the registration flow.
+      // Role marker written by the registration flow, but only once the
+      // backend reported the verification as APPROVED.
       final savedRole = await UserSession.getSavedRole();
       if (!mounted) return;
       if (savedRole == 'volunteer') {
