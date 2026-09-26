@@ -85,11 +85,38 @@ class RequestsService {
         .patch('/api/requests/$requestId/status', body: {'status': wire});
   }
 
+  /// Q-07 — the senior who raised it can stand it down, but only before a
+  /// volunteer has accepted. The server rejects this with 409 once accepted.
+  Future<void> cancel(String requestId) =>
+      ApiClient.instance.patch('/api/requests/$requestId/cancel');
+
   /// L-02 — accepting a request requires the volunteer to be available.
   Future<void> setAvailability(bool available) => ApiClient.instance.patch(
         '/api/volunteers/me/availability',
         body: {'is_available': available},
       );
+
+  /// Q-08 — the assigned volunteer's contact details, for the senior who owns
+  /// the request.
+  ///
+  /// Deliberately a separate call from [detail]: the phone number is only
+  /// released once a volunteer is actually assigned (BR-08), and only to the
+  /// owning senior. Asking for it up front would just draw a 403 on every
+  /// request that nobody has taken yet.
+  Future<VolunteerContact?> volunteerContact(String requestId) async {
+    try {
+      final data =
+          await ApiClient.instance.get('/api/requests/$requestId/volunteer');
+      final volunteer = data['volunteer'];
+      if (volunteer is! Map<String, dynamic>) return null;
+      return VolunteerContact.fromJson(volunteer);
+    } on ApiException catch (e) {
+      // Not an error worth surfacing: the usual cause is simply that nobody
+      // has accepted yet, which the caller already knows from the status.
+      if (e.statusCode == 403 || e.code == 'REQUEST_NOT_ACTIVE') return null;
+      rethrow;
+    }
+  }
 
   List<HelpRequest> _list(Map<String, dynamic> data, String key) {
     final raw = data[key];
@@ -98,5 +125,38 @@ class RequestsService {
         .whereType<Map<String, dynamic>>()
         .map(HelpRequest.fromJson)
         .toList();
+  }
+}
+
+/// The volunteer helping a senior, as returned by Q-08.
+class VolunteerContact {
+  final String fullName;
+  final String phoneNumber;
+  final String? organization;
+  final List<String> skills;
+
+  const VolunteerContact({
+    required this.fullName,
+    required this.phoneNumber,
+    this.organization,
+    this.skills = const [],
+  });
+
+  factory VolunteerContact.fromJson(Map<String, dynamic> json) {
+    final rawSkills = json['skills'];
+    return VolunteerContact(
+      fullName: (json['full_name'] ?? '').toString(),
+      phoneNumber: (json['phone_number'] ?? '').toString(),
+      organization: json['organization']?.toString(),
+      skills: rawSkills is List
+          ? rawSkills.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
+          : const [],
+    );
+  }
+
+  /// `+919876543210` for `tel:` — `tel:` needs the value to be dialable.
+  String get dialNumber {
+    final digits = phoneNumber.replaceAll(RegExp(r'[^0-9+]'), '');
+    return digits.isEmpty ? phoneNumber : digits;
   }
 }

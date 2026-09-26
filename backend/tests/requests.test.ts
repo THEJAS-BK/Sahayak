@@ -37,7 +37,10 @@ describe('help requests flow', () => {
 
     const res = await createRequestFor(senior)
     expect(res.status).toBe(201)
-    expect(res.body.data.status).toBe('PENDING')
+    // Dispatch is synchronous, so the stored DISPATCHED status is what the
+    // caller is told — not the PENDING it passed through inside the transaction.
+    expect(res.body.data.status).toBe('DISPATCHED')
+    expect(res.body.data.notified).toBe(true)
     expect(res.body.data.request_id).toBeTruthy()
     // Both volunteers within radius → both dispatched.
     expect(res.body.data.dispatched_to).toEqual(expect.arrayContaining([vol1.id, vol2.id]))
@@ -313,5 +316,46 @@ describe('help requests flow', () => {
 
     const asVolunteer = await app().get('/api/police/requests').set('Authorization', authHeader(vol))
     expect(asVolunteer.status).toBe(403)
+  })
+
+  it('Q-04: radius_m is enforced even for a volunteer already in the dispatch batch', async () => {
+    const senior = await createApprovedSenior()
+    // Dispatched while adjacent to the request...
+    const vol = await createApprovedVolunteer({ base_latitude: 12.9716, base_longitude: 77.5946 })
+    const created = await createRequestFor(senior)
+    const requestId = created.body.data.request_id
+    expect(created.body.data.dispatched_to).toContain(vol.id)
+
+    // ...but the volunteer has since moved ~17km away. The batch is a
+    // snapshot, so without re-checking distance they would keep seeing it.
+    const away = await app()
+      .get('/api/requests/nearby?lat=13.08&lng=77.705&radius_m=5000')
+      .set('Authorization', authHeader(vol))
+    expect(away.status).toBe(200)
+    expect(away.body.data.requests.map((r: { id: string }) => r.id)).not.toContain(requestId)
+
+    // Same volunteer, same request, wider radius → it is still theirs to take,
+    // which proves the batch membership was never the thing being filtered.
+    const wide = await app()
+      .get('/api/requests/nearby?lat=13.08&lng=77.705&radius_m=20000')
+      .set('Authorization', authHeader(vol))
+    expect(wide.body.data.requests.map((r: { id: string }) => r.id)).toContain(requestId)
+  })
+
+  it('Q-01: reports notified=false when no volunteer is in range, so the caller can say so', async () => {
+    const senior = await createApprovedSenior()
+    // The only approved volunteer is far outside MATCH_RADIUS_M.
+    await createApprovedVolunteer({ base_latitude: 19.076, base_longitude: 72.8777 })
+
+    const created = await createRequestFor(senior)
+    expect(created.status).toBe(201)
+    expect(created.body.data.dispatched_to).toEqual([])
+    expect(created.body.data.notified).toBe(false)
+    expect(created.body.data.status).toBe('DISPATCHED')
+
+    const row = await pool.query('SELECT dispatch_batch FROM help_requests WHERE id = $1', [
+      created.body.data.request_id,
+    ])
+    expect(row.rows[0].dispatch_batch).toEqual([])
   })
 })

@@ -8,7 +8,6 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest",
-    "demo:setup": "tsx src/test/setup-test-data.ts",
     "demo:local": "tsx src/test/local-demo.ts"
   },
   "dependencies": {

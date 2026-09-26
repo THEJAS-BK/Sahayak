@@ -93,9 +93,16 @@ export async function findCandidates(
 }
 
 /**
- * Marks a request DISPATCHED (possibly with an empty batch) and records the
- * batch entries (id + position snapshot + distance). Caller commits; the
- * returned candidates fuel the post-commit FCM fan-out.
+ * Marks a request DISPATCHED and records the batch entries (id + position
+ * snapshot + distance). Caller commits; the returned candidates fuel the
+ * post-commit FCM fan-out.
+ *
+ * The batch is CUMULATIVE. Q-04 gates on membership, so overwriting it with
+ * only the newly-found candidates would silently un-offer the request to
+ * everyone who was already notified. `excludeIds` therefore only controls who
+ * gets a *fresh notification* on a retry; it never removes anyone from the
+ * batch. Re-dispatching with the previous batch excluded used to erase the
+ * batch on the first sweep and leave the request with nobody able to accept it.
  */
 export async function markDispatched(
   db: Queryable,
@@ -113,12 +120,27 @@ export async function markDispatched(
     excludeIds: opts.excludeIds,
   })
 
-  const batch = candidates.map((c) => ({
-    id: c.id,
-    latitude: c.latitude,
-    longitude: c.longitude,
-    distance_m: c.distanceM,
-  }))
+  const prior = await db.query(
+    'SELECT dispatch_batch FROM help_requests WHERE id = $1',
+    [request.id],
+  )
+  const priorBatch: unknown[] =
+    prior.rowCount && Array.isArray(prior.rows[0].dispatch_batch) ? (prior.rows[0].dispatch_batch as unknown[]) : []
+
+  const batch = [...priorBatch]
+  const seen = new Set(
+    priorBatch.map((e) => (e as { id?: string })?.id).filter((id): id is string => typeof id === 'string'),
+  )
+  for (const c of candidates) {
+    if (seen.has(c.id)) continue
+    seen.add(c.id)
+    batch.push({
+      id: c.id,
+      latitude: c.latitude,
+      longitude: c.longitude,
+      distance_m: c.distanceM,
+    })
+  }
 
   await db.query(
     `UPDATE help_requests
@@ -127,5 +149,5 @@ export async function markDispatched(
     [request.id, attempt, JSON.stringify(batch)],
   )
 
-  return { candidates, dispatched: candidates.length > 0 }
+  return { candidates, dispatched: batch.length > 0 }
 }

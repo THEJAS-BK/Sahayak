@@ -32,6 +32,8 @@ const ASSIGNABLE: RequestStatus[] = ['PENDING', 'MATCHING', 'DISPATCHED'];
 const canAssign = (req: PoliceRequest): boolean =>
   ASSIGNABLE.includes(req.status) && req.assigned_volunteer === null;
 
+const notifiedCount = (req: PoliceRequest): number => req.dispatch_batch?.length ?? 0;
+
 const formatDate = (iso: string) => new Date(iso).toLocaleString(undefined, {
   dateStyle: 'medium',
   timeStyle: 'short',
@@ -209,6 +211,20 @@ export const Requests: React.FC = () => {
                   </TableCell>
                   <TableCell>
                     <Badge variant={statusBadgeVariant[req.status]}>{req.status}</Badge>
+                    {/*
+                      An empty dispatch batch while the request is still
+                      unassigned means dispatch found nobody in range and the
+                      senior is waiting on an alert nobody received. The Assign
+                      button in this same row is the fix.
+                    */}
+                    {notifiedCount(req) === 0 && canAssign(req) && (
+                      <div
+                        title="Dispatch found no volunteer in range. Nobody was notified — assign one by hand."
+                        style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: 'var(--color-status-error)' }}
+                      >
+                        Nobody notified
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell>{req.assigned_volunteer?.full_name ?? '—'}</TableCell>
                   <TableCell style={{ color: 'var(--color-text-secondary)' }}>{formatDate(req.created_at)}</TableCell>

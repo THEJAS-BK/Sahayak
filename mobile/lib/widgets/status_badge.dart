@@ -84,3 +84,67 @@ class PriorityBadge extends StatelessWidget {
   Color get _fg =>
       priority == RequestPriority.urgent ? AppColors.error : AppColors.success;
 }
+
+/// Lifecycle chip for a help request, in the senior's own words.
+///
+/// The police console and the volunteer screens show the raw status
+/// (DISPATCHED, UNASSIGNED); none of that means anything to the person who
+/// asked for help, so this renders [HelpRequest.seniorStatusLabel] instead.
+/// A null status — Q-04 omits it — falls back to "Sent" rather than an empty
+/// pill.
+class RequestStateBadge extends StatelessWidget {
+  final HelpRequestStatus? status;
+
+  const RequestStateBadge({super.key, required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: _bg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        seniorStatusLabel(status),
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: _fg,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+
+  Color get _fg {
+    switch (status) {
+      case HelpRequestStatus.accepted:
+      case HelpRequestStatus.inProgress:
+      case HelpRequestStatus.completed:
+        return AppColors.success;
+      case HelpRequestStatus.cancelled:
+        return AppColors.textSecondary;
+      case HelpRequestStatus.unassigned:
+        return AppColors.error;
+      default:
+        return AppColors.warning;
+    }
+  }
+
+  Color get _bg {
+    switch (status) {
+      case HelpRequestStatus.accepted:
+      case HelpRequestStatus.inProgress:
+      case HelpRequestStatus.completed:
+        return const Color(0xFFDCFCE7);
+      case HelpRequestStatus.cancelled:
+        return const Color(0xFFF1F5F9);
+      case HelpRequestStatus.unassigned:
+        return const Color(0xFFFFE4E6);
+      default:
+        return const Color(0xFFFEF3C7);
+    }
+  }
+}

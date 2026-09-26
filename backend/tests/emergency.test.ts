@@ -166,6 +166,132 @@ describe('emergency events & audit', () => {
     expect(audit.rowCount).toBe(1)
   })
 
+  it('BG-01: a redispatch must not drop volunteers who were already offered the request', async () => {
+    const senior = await createApprovedSenior()
+    const vol1 = await createApprovedVolunteer({ base_latitude: 12.9716, base_longitude: 77.5946 })
+    const created = await app()
+      .post('/api/requests')
+      .set('Authorization', authHeader(senior))
+      .send({ category: 'medical_help', description: 'x', latitude: 12.9716, longitude: 77.5946, source: 'flutter_app' })
+    const requestId = created.body.data.request_id
+    expect(created.body.data.dispatched_to).toContain(vol1.id)
+
+    // The sweep excludes the previous batch to find somebody *new*, but Q-04
+    // gates on batch membership. Replacing the batch with the new candidates
+    // therefore un-offers the request to the volunteer who was already told
+    // about it. Assert after every sweep: with replace-semantics the batch
+    // oscillates (populated -> empty -> populated), so only a per-sweep check
+    // catches it.
+    for (let i = 0; i < 3; i += 1) {
+      await pool.query("UPDATE help_requests SET dispatched_at = now() - interval '2 minutes' WHERE id = $1", [requestId])
+      await runDispatchSweep()
+
+      const row = await pool.query('SELECT status, dispatch_batch FROM help_requests WHERE id = $1', [requestId])
+      expect(row.rows[0].status).toBe('DISPATCHED')
+      const ids = (row.rows[0].dispatch_batch as Array<{ id: string }>).map((e) => e.id)
+      expect(ids, `volunteer was dropped from the batch on sweep ${i + 1}`).toContain(vol1.id)
+    }
+
+    // And the volunteer can still act on it.
+    const nearby = await app()
+      .get('/api/requests/nearby?lat=12.9716&lng=77.5946&radius_m=5000')
+      .set('Authorization', authHeader(vol1))
+    expect((nearby.body.data.requests as Array<{ id: string }>).map((r) => r.id)).toContain(requestId)
+  })
+
+  it('BG-01: UNASSIGNED is not terminal — a volunteer coming on duty picks the request back up', async () => {
+    const senior = await createApprovedSenior()
+    const created = await app()
+      .post('/api/requests')
+      .set('Authorization', authHeader(senior))
+      .send({ category: 'medical_help', description: 'x', latitude: 12.9716, longitude: 77.5946, source: 'flutter_app' })
+    const requestId = created.body.data.request_id
+
+    // Nobody was in range, so dispatch exhausted itself and gave up.
+    await pool.query(
+      `UPDATE help_requests SET status = 'UNASSIGNED', dispatch_attempt = 3, dispatch_batch = '[]'::jsonb WHERE id = $1`,
+      [requestId],
+    )
+
+    // A volunteer comes on duty nearby afterwards.
+    const late = await createApprovedVolunteer({ base_latitude: 12.9716, base_longitude: 77.5946 })
+
+    const outcome = await runDispatchSweep()
+    expect(outcome.recovered).toBe(1)
+
+    const row = await pool.query('SELECT status, dispatch_batch FROM help_requests WHERE id = $1', [requestId])
+    expect(row.rows[0].status).toBe('DISPATCHED')
+    expect((row.rows[0].dispatch_batch as Array<{ id: string }>).map((e) => e.id)).toContain(late.id)
+
+    const nearby = await app()
+      .get('/api/requests/nearby?lat=12.9716&lng=77.5946&radius_m=5000')
+      .set('Authorization', authHeader(late))
+    expect((nearby.body.data.requests as Array<{ id: string }>).map((r) => r.id)).toContain(requestId)
+  })
+
+  it('BG-01: an UNASSIGNED request recovers on the volunteers already in its batch', async () => {
+    const senior = await createApprovedSenior()
+    const vol = await createApprovedVolunteer({ base_latitude: 12.9716, base_longitude: 77.5946 })
+    const created = await app()
+      .post('/api/requests')
+      .set('Authorization', authHeader(senior))
+      .send({ category: 'medical_help', description: 'x', latitude: 12.9716, longitude: 77.5946, source: 'flutter_app' })
+    const requestId = created.body.data.request_id
+    expect(created.body.data.dispatched_to).toContain(vol.id)
+
+    // Exhausted its attempts, but the batch still names an available volunteer.
+    await pool.query(
+      `UPDATE help_requests SET status = 'UNASSIGNED', dispatch_attempt = 3 WHERE id = $1`,
+      [requestId],
+    )
+    expect((await pool.query('SELECT dispatch_batch FROM help_requests WHERE id = $1', [requestId]))
+      .rows[0].dispatch_batch).toEqual([expect.objectContaining({ id: vol.id })])
+
+    // Searching with the batch excluded — the obvious way to avoid duplicate
+    // notifications — finds nobody here, because the only volunteer in range is
+    // the one just excluded. The request would sit UNASSIGNED forever.
+    const outcome = await runDispatchSweep()
+    expect(outcome.recovered).toBe(1)
+
+    const row = await pool.query('SELECT status FROM help_requests WHERE id = $1', [requestId])
+    expect(row.rows[0].status).toBe('DISPATCHED')
+
+    const nearby = await app()
+      .get('/api/requests/nearby?lat=12.9716&lng=77.5946&radius_m=5000')
+      .set('Authorization', authHeader(vol))
+    expect((nearby.body.data.requests as Array<{ id: string }>).map((r) => r.id)).toContain(requestId)
+
+    // It must stay in circulation. Recovery that keeps the exhausted attempt
+    // count lets the next sweep flip it back to UNASSIGNED, and the request
+    // ping-pongs in the dark, unreachable by any volunteer.
+    await pool.query("UPDATE help_requests SET dispatched_at = now() - interval '2 minutes' WHERE id = $1", [requestId])
+    await runDispatchSweep()
+    const after = await pool.query('SELECT status, dispatch_attempt FROM help_requests WHERE id = $1', [requestId])
+    expect(after.rows[0].status).toBe('DISPATCHED')
+    expect(after.rows[0].dispatch_attempt).toBeLessThan(3)
+  })
+
+  it('BG-01: UNASSIGNED with nobody available stays put and does not re-alert police every sweep', async () => {
+    const senior = await createApprovedSenior()
+    const created = await app()
+      .post('/api/requests')
+      .set('Authorization', authHeader(senior))
+      .send({ category: 'medical_help', description: 'x', latitude: 12.9716, longitude: 77.5946, source: 'flutter_app' })
+    const requestId = created.body.data.request_id
+    await pool.query(
+      `UPDATE help_requests SET status = 'UNASSIGNED', dispatch_attempt = 3, dispatch_batch = '[]'::jsonb WHERE id = $1`,
+      [requestId],
+    )
+
+    const outcome = await runDispatchSweep()
+    expect(outcome.recovered).toBe(0)
+    expect(outcome.policeAlerts).toEqual([])
+
+    const row = await pool.query('SELECT status, dispatch_attempt FROM help_requests WHERE id = $1', [requestId])
+    expect(row.rows[0].status).toBe('UNASSIGNED')
+    expect(row.rows[0].dispatch_attempt).toBe(3)
+  })
+
   it('BG-02: cleanup removes used/expired OTPs and dead refresh tokens', async () => {
     await pool.query(
       "INSERT INTO otp_codes (email, code_hash, expires_at, used) VALUES ('dead@example.com', 'x', now() - interval '1 hour', true)",

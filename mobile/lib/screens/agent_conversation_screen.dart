@@ -204,20 +204,30 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
               'sending a request',
         );
       }
-      await ApiClient.instance.post(
+      final res = await ApiClient.instance.post(
         '/api/requests',
         body: request.toCreateBody(
           latitude: home.latitude,
           longitude: home.longitude,
         ),
       );
+      // Dispatch is synchronous, so an empty batch means nobody was in range.
+      // Saying "a volunteer will be in touch" regardless would leave the
+      // senior waiting on an alert that was never sent to anyone.
+      final notified = res['notified'] == true;
       if (!mounted) return;
       setState(() {
         _pendingRequest = null;
         _messages.add(Message(
-          text: 'Sent — ${categoryLabel(request.category).toLowerCase()} help'
-              '${request.priority == 'urgent' ? ' (urgent)' : ''} requested. '
-              'A volunteer will be in touch shortly.',
+          text: notified
+              ? 'Sent — ${categoryLabel(request.category).toLowerCase()} help'
+                  '${request.priority == 'urgent' ? ' (urgent)' : ''} requested. '
+                  'A volunteer will be in touch shortly.'
+              : 'Sent — ${categoryLabel(request.category).toLowerCase()} help'
+                  '${request.priority == 'urgent' ? ' (urgent)' : ''} requested. '
+                  'No volunteers are nearby right now, so nobody has been '
+                  'notified yet. Please call the helpline, or try again in a '
+                  'little while.',
           role: MessageRole.agent,
           timestamp: DateTime.now(),
         ));

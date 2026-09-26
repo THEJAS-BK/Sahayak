@@ -2,7 +2,7 @@ import { config } from "../config/index.js";
 import { withTransaction } from "../database/pool.js";
 import { writeAudit } from "../database/audit.js";
 import { logger } from "../lib/logger.js";
-import { markDispatched } from "../modules/matching/matching.service.js";
+import { findCandidates, markDispatched } from "../modules/matching/matching.service.js";
 import { notifyDispatch } from "../modules/notifications/request.js";
 import { notifyPolice } from "../modules/notifications/police.js";
 import type { Queryable } from "../database/pool.js";
@@ -10,6 +10,8 @@ import type { Queryable } from "../database/pool.js";
 export interface SweepOutcome {
   redispatched: number;
   unassigned: number;
+  /** UNASSIGNED requests that found a volunteer and went back into circulation. */
+  recovered: number;
   newBatches: Array<{
     requestId: string;
     category: string;
@@ -22,10 +24,16 @@ async function sweepOnce(db: Queryable, outcome: SweepOutcome): Promise<void> {
   const timeoutS = config.matching.timeoutS;
   const maxAttempts = config.matching.maxAttempts;
 
+  // UNASSIGNED is not terminal. A request only got there because nobody was
+  // available at the time, and Q-04 gates on status = 'DISPATCHED', so leaving
+  // it there hides the request from every volunteer permanently — the senior
+  // waits forever even once somebody comes on duty. Retry it on every sweep;
+  // it is only picked up again if a candidate actually appears.
   const res = await db.query(
-    `SELECT id, category, latitude, longitude, priority, dispatch_attempt, dispatch_batch
+    `SELECT id, category, latitude, longitude, priority, dispatch_attempt, dispatch_batch, status
      FROM help_requests
-     WHERE status = 'DISPATCHED' AND dispatched_at < now() - ($1 * interval '1 second')`,
+     WHERE status = 'UNASSIGNED'
+        OR (status = 'DISPATCHED' AND dispatched_at < now() - ($1 * interval '1 second'))`,
     [timeoutS],
   );
 
@@ -35,6 +43,53 @@ async function sweepOnce(db: Queryable, outcome: SweepOutcome): Promise<void> {
     const priorIds: string[] = Array.isArray(row.dispatch_batch)
       ? (row.dispatch_batch as Array<{ id: string }>).map((e) => e.id)
       : [];
+
+    // An UNASSIGNED request goes back into circulation as soon as *anybody* is
+    // available, which includes the volunteers already sitting in its batch.
+    // Searching with the batch excluded — to avoid duplicate notifications —
+    // would find nobody here and leave the request stranded forever, because
+    // the only volunteer in range is the one we just excluded.
+    if (row.status === 'UNASSIGNED') {
+      const request = {
+        id: requestId,
+        category: row.category,
+        latitude: Number(row.latitude),
+        longitude: Number(row.longitude),
+        priority: row.priority as "normal" | "urgent",
+      };
+      const radius =
+        row.priority === 'urgent' ? config.matching.radiusM * 2 : config.matching.radiusM;
+      const available = await findCandidates(db, {
+        latitude: request.latitude,
+        longitude: request.longitude,
+        radiusM: radius,
+        category: request.category,
+        limit: config.matching.batchSize,
+      });
+      if (available.length === 0) {
+        // Nobody yet. Leave it UNASSIGNED so the sweep keeps retrying, without
+        // burning an attempt or re-alerting the police every 30 seconds.
+        continue;
+      }
+
+      // Reset the attempt counter. The request is starting a genuinely new
+      // chance, and keeping the exhausted count would make the very next sweep
+      // see `attempt >= maxAttempts` and flip it straight back to UNASSIGNED —
+      // recovery and exhaustion would fight each other every 30 seconds.
+      await markDispatched(db, request, 0);
+      outcome.recovered += 1;
+      // Only somebody who was not already in the batch needs telling. The
+      // others were notified when the request was first dispatched.
+      const fresh = available.filter((c) => !priorIds.includes(c.id));
+      if (fresh.length > 0) {
+        outcome.newBatches.push({
+          requestId,
+          category: row.category,
+          candidates: fresh.map((c) => ({ id: c.id, fcmToken: c.fcmToken })),
+        });
+      }
+      continue;
+    }
 
     if (attempt < maxAttempts) {
       const { candidates } = await markDispatched(
@@ -87,6 +142,7 @@ export async function runDispatchSweep(): Promise<SweepOutcome> {
   const outcome: SweepOutcome = {
     redispatched: 0,
     unassigned: 0,
+    recovered: 0,
     newBatches: [],
     policeAlerts: [],
   };
@@ -136,9 +192,9 @@ async function guardedDispatch(): Promise<void> {
         { type: "request_unassigned" },
       );
     }
-    if (outcome.redispatched > 0 || outcome.unassigned > 0) {
+    if (outcome.redispatched > 0 || outcome.unassigned > 0 || outcome.recovered > 0) {
       logger.info(
-        `[bg] dispatch sweep: ${outcome.redispatched} redispatched, ${outcome.unassigned} unassigned`,
+        `[bg] dispatch sweep: ${outcome.redispatched} redispatched, ${outcome.unassigned} unassigned, ${outcome.recovered} recovered`,
       );
     }
   } catch (err) {
