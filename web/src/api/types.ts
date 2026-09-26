@@ -39,6 +39,8 @@ export interface PoliceRequest {
   source: string;
   status: RequestStatus;
   dispatch_attempt?: number;
+  /** Snapshot of who the request was offered to. Empty means nobody was in range. */
+  dispatch_batch?: Array<{ id: string; latitude?: number; longitude?: number; distance_m?: number }> | null;
   created_at: string;
   updated_at: string;
   dispatched_at?: string | null;

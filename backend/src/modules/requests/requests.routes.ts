@@ -51,7 +51,7 @@ router.post(
         `\n[requests] DRY RUN — POST /api/requests from ${req.user!.id} (${req.user!.role}) at ${new Date().toISOString()}\n` +
           JSON.stringify(parsed.data, null, 2),
       )
-      ok(res, { dry_run: true, request_id: null, status: 'PENDING', dispatched_to: [] }, 201)
+      ok(res, { dry_run: true, request_id: null, status: 'PENDING', dispatched_to: [], notified: false }, 201)
       return
     }
 

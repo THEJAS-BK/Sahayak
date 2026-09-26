@@ -1,4 +1,5 @@
 import { errors } from '../../lib/errors.js'
+import { logger } from '../../lib/logger.js'
 import { writeAudit } from '../../database/audit.js'
 import { config } from '../../config/index.js'
 import type { Queryable } from '../../database/pool.js'
@@ -19,8 +20,22 @@ export interface CreateRequestInput {
 
 export interface CreateRequestResult {
   request_id: string
-  status: 'PENDING'
+  /**
+   * The status actually stored on the row. Dispatch is synchronous, so by the
+   * time this returns the request is always DISPATCHED — it went through
+   * PENDING inside the transaction and nobody can observe that. Reporting
+   * PENDING here used to contradict both the database and the portal.
+   */
+  status: 'DISPATCHED'
+  /** Volunteer ids offered the request. Empty when nobody was in range. */
   dispatched_to: string[]
+  /**
+   * False when dispatch found no candidate. The request is still live and
+   * other volunteers may take it, so this is not an error — but nobody was
+   * notified, and the caller has to say so rather than let the senior sit
+   * waiting on a dispatch that never reached anyone.
+   */
+  notified: boolean
 }
 
 function numeric(value: unknown): number {
@@ -96,14 +111,45 @@ export async function createRequest(
     },
   })
 
-  return { request_id: request.id, status: 'PENDING', dispatched_to: candidates.map((c) => c.id) }
+  const dispatchedTo = candidates.map((c) => c.id)
+
+  if (dispatchedTo.length === 0) {
+    logger.warn(
+      { requestId: request.id, category: input.category, priority: input.priority },
+      'dispatch found no volunteers in range; request is live but nobody was notified',
+    )
+  }
+
+  return { request_id: request.id, status: 'DISPATCHED', dispatched_to: dispatchedTo, notified: dispatchedTo.length > 0 }
 }
 
-/** Q-02 */
+/**
+ * Q-02 — a senior's own requests, or a volunteer's assignments.
+ *
+ * The volunteer's name rides along so the senior's list can answer "did
+ * somebody accept, and who" without an extra request per row. Only the name:
+ * the phone number stays behind Q-08, which gates on an active assignment.
+ * Without this the app had to call Q-03 per row just to render a name.
+ */
 export async function listMyRequests(db: Queryable, user: { id: string; role: string }): Promise<unknown[]> {
-  const where = user.role === 'senior' ? 'senior_id = $1' : 'assigned_volunteer_id = $1'
-  const res = await db.query(`SELECT * FROM help_requests WHERE ${where} ORDER BY created_at DESC`, [user.id])
-  return res.rows.map((r) => shapeRow(r))
+  const where = user.role === 'senior' ? 'hr.senior_id = $1' : 'hr.assigned_volunteer_id = $1'
+  const res = await db.query(
+    `SELECT hr.*, vp.full_name AS assigned_volunteer_name
+     FROM help_requests hr
+     LEFT JOIN volunteer_profiles vp ON vp.user_id = hr.assigned_volunteer_id
+     WHERE ${where}
+     ORDER BY hr.created_at DESC`,
+    [user.id],
+  )
+  return res.rows.map((r) => {
+    const row = shapeRow(r)
+    // The alias is only a carrier for the nested object below.
+    delete row.assignedVolunteerName
+    row.assigned_volunteer = r.assigned_volunteer_id
+      ? { id: r.assigned_volunteer_id, full_name: r.assigned_volunteer_name ?? null }
+      : null
+    return row
+  })
 }
 
 async function loadRequest(db: Queryable, id: string) {
@@ -314,13 +360,27 @@ export async function declineRequest(
   const alreadyDeclined = (inserted.rowCount ?? 0) === 0
 
   if (!alreadyDeclined) {
+    // Release a police earmark (P-05). While the request is DISPATCHED,
+    // `assigned_volunteer_id` only records who an officer picked — the
+    // volunteer has not committed to anything and `accepted_at` is still null.
+    // Keeping it would make the volunteer who just said no the permanent
+    // assignee of a request nobody is coming to, and the "assignment outranks a
+    // decline" override in Q-04 would keep showing them the card they rejected.
+    const wasEarmarked = request.assigned_volunteer_id === user.id
+    if (wasEarmarked) {
+      await db.query(
+        'UPDATE help_requests SET assigned_volunteer_id = NULL, updated_at = now() WHERE id = $1',
+        [requestId],
+      )
+    }
+
     await writeAudit(db, {
       actorId: user.id,
       action: 'request.declined',
       entityType: 'help_request',
       entityId: requestId,
-      before: { status: 'DISPATCHED', declined_by: null },
-      after: { status: 'DISPATCHED', declined_by: user.id, reason: reason ?? null },
+      before: { status: 'DISPATCHED', declined_by: null, assigned_volunteer_id: request.assigned_volunteer_id },
+      after: { status: 'DISPATCHED', declined_by: user.id, reason: reason ?? null, assigned_volunteer_id: null },
     })
   }
 
@@ -443,33 +503,43 @@ export async function getVolunteerContact(
   }
 }
 
-/** Q-04: DISPATCHED requests whose dispatch batch includes the caller. */
+/**
+ * Q-04: DISPATCHED requests whose dispatch batch includes the caller.
+ *
+ * The radius is enforced here as well as at dispatch time. Dispatch already
+ * picked these volunteers while they were in range, but the batch is a
+ * snapshot: without re-checking distance, somebody offered a request at 4 km
+ * keeps seeing it after walking to the other side of the city.
+ */
 export async function nearbyRequests(
   db: Queryable,
   user: { id: string },
   opts: { latitude: number; longitude: number; radiusM: number },
 ): Promise<unknown[]> {
   const res = await db.query(
-    `SELECT hr.id, hr.category, hr.description, hr.latitude, hr.longitude, hr.priority, hr.created_at,
-            6371000 * 2 * asin(sqrt(
-              power(sin(radians((hr.latitude - $1) / 2)), 2) +
-              cos(radians(hr.latitude)) * cos(radians($1)) *
-              power(sin(radians((hr.longitude - $2) / 2)), 2)
-            )) AS distance_m
-     FROM help_requests hr
-     WHERE hr.status = 'DISPATCHED'
-       AND EXISTS (SELECT 1 FROM jsonb_array_elements(hr.dispatch_batch) e WHERE e->>'id' = $3)
-       AND NOT EXISTS (SELECT 1 FROM help_requests mine WHERE mine.assigned_volunteer_id = $3::uuid AND mine.status IN ('ACCEPTED','IN_PROGRESS'))
-       AND (
-         -- A decline only hides the request from the volunteer who made it...
-         NOT EXISTS (SELECT 1 FROM request_declines rd WHERE rd.request_id = hr.id AND rd.volunteer_id = $3::uuid)
-         -- ...unless police assigned it to them by hand afterwards (P-05), which
-         -- is an explicit human decision and outranks an earlier decline.
-         OR hr.assigned_volunteer_id = $3::uuid
-       )
-     ORDER BY distance_m ASC
-     LIMIT 50`,
-    [opts.latitude, opts.longitude, user.id],
+    `WITH nearby AS (
+       SELECT hr.id, hr.category, hr.description, hr.latitude, hr.longitude, hr.priority, hr.created_at,
+              6371000 * 2 * asin(sqrt(
+                power(sin(radians((hr.latitude - $1) / 2)), 2) +
+                cos(radians(hr.latitude)) * cos(radians($1)) *
+                power(sin(radians((hr.longitude - $2) / 2)), 2)
+              )) AS distance_m
+       FROM help_requests hr
+       WHERE hr.status = 'DISPATCHED'
+         AND EXISTS (SELECT 1 FROM jsonb_array_elements(hr.dispatch_batch) e WHERE e->>'id' = $3)
+         AND NOT EXISTS (SELECT 1 FROM help_requests mine WHERE mine.assigned_volunteer_id = $3::uuid AND mine.status IN ('ACCEPTED','IN_PROGRESS'))
+         AND (
+           -- A decline only hides the request from the volunteer who made it...
+           NOT EXISTS (SELECT 1 FROM request_declines rd WHERE rd.request_id = hr.id AND rd.volunteer_id = $3::uuid)
+           -- ...unless police assigned it to them by hand afterwards (P-05), which
+           -- is an explicit human decision and outranks an earlier decline. A
+           -- decline made *after* the assignment clears the earmark, so this can
+           -- only ever resurrect a request declined before the officer stepped in.
+           OR hr.assigned_volunteer_id = $3::uuid
+         )
+     )
+     SELECT * FROM nearby WHERE distance_m <= $4 ORDER BY distance_m ASC LIMIT 50`,
+    [opts.latitude, opts.longitude, user.id, opts.radiusM],
   )
   return res.rows.map((r) => ({
     id: r.id,

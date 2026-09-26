@@ -190,4 +190,33 @@ describe('Q-05b: volunteer declines a request', () => {
     expect(res.status).toBe(200)
     expect(res.body.data.status).toBe('ACCEPTED')
   })
+
+  it('a police-assigned volunteer who declines stops being offered it', async () => {
+    const senior = await createApprovedSenior()
+    const assigned = await createApprovedVolunteer({ base_latitude: 12.9716, base_longitude: 77.5946 })
+    const other = await createApprovedVolunteer({ base_latitude: 12.9717, base_longitude: 77.5947 })
+    const requestId = await dispatchedRequest(senior, [assigned, other])
+
+    // An officer earmarks this volunteer. The earmark is a soft reservation:
+    // the request is only DISPATCHED and accepted_at is still null.
+    await pool.query('UPDATE help_requests SET assigned_volunteer_id = $1 WHERE id = $2', [assigned.id, requestId])
+    expect(await nearbyIds(assigned)).toContain(requestId)
+
+    // They say no. The earmark has to be released, or the "assignment outranks
+    // a decline" override below would resurrect the request for them forever —
+    // they would decline, refresh, and see the same card again.
+    const res = await app()
+      .patch(`/api/requests/${requestId}/decline`)
+      .set('Authorization', authHeader(assigned))
+      .send({ reason: 'Cannot get there today' })
+    expect(res.status).toBe(200)
+
+    const row = await pool.query('SELECT status, assigned_volunteer_id FROM help_requests WHERE id = $1', [requestId])
+    expect(row.rows[0].status).toBe('DISPATCHED')
+    expect(row.rows[0].assigned_volunteer_id).toBeNull()
+    expect(await nearbyIds(assigned)).not.toContain(requestId)
+
+    // The request is untouched for everyone else.
+    expect(await nearbyIds(other)).toContain(requestId)
+  })
 })

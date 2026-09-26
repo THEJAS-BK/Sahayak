@@ -65,6 +65,34 @@ String helpRequestStatusLabel(HelpRequestStatus s) {
   }
 }
 
+/// Plain-language status for a senior.
+///
+/// The wire enum is written for the police console (DISPATCHED, UNASSIGNED) and
+/// none of it means anything to the person who asked for help, so the senior
+/// screens read this instead. Null — Q-04 omits `status` — falls back to
+/// "Sent" rather than showing an empty pill.
+String seniorStatusLabel(HelpRequestStatus? status) {
+  switch (status) {
+    case HelpRequestStatus.pending:
+    case HelpRequestStatus.matching:
+      return 'Sending your request';
+    case HelpRequestStatus.dispatched:
+      return 'Looking for a volunteer';
+    case HelpRequestStatus.accepted:
+      return 'Accepted';
+    case HelpRequestStatus.inProgress:
+      return 'Volunteer is on the way';
+    case HelpRequestStatus.completed:
+      return 'Completed';
+    case HelpRequestStatus.cancelled:
+      return 'Cancelled';
+    case HelpRequestStatus.unassigned:
+      return 'No volunteer available yet';
+    case null:
+      return 'Sent';
+  }
+}
+
 /// A help request as returned by the backend.
 ///
 /// Every field is populated from an API response — nothing here is fixture
@@ -77,6 +105,10 @@ String helpRequestStatusLabel(HelpRequestStatus s) {
 /// * `GET /api/requests/:id` (Q-03) adds `senior.full_name` /
 ///   `senior.phone_number`, but only once the caller is the assigned
 ///   volunteer (the senior's phone is never exposed to unassigned volunteers).
+///
+/// Q-02 and Q-03 disagree on key casing: Q-02 runs every column through
+/// `shapeRow`, which camelCases it (`createdAt`, `acceptedAt`), while Q-03 and
+/// Q-04 project snake_case. Both are read here so one model serves all three.
 class HelpRequest {
   final String id;
   final String category;
@@ -86,6 +118,7 @@ class HelpRequest {
   final DateTime? createdAt;
   final DateTime? acceptedAt;
   final DateTime? completedAt;
+  final DateTime? dispatchedAt;
   final double? latitude;
   final double? longitude;
   final double? distanceM;
@@ -93,6 +126,8 @@ class HelpRequest {
   final Map<String, dynamic> details;
   final String? seniorName;
   final String? seniorPhone;
+  final String? assignedVolunteerId;
+  final String? assignedVolunteerName;
 
   const HelpRequest({
     required this.id,
@@ -103,6 +138,7 @@ class HelpRequest {
     this.createdAt,
     this.acceptedAt,
     this.completedAt,
+    this.dispatchedAt,
     this.latitude,
     this.longitude,
     this.distanceM,
@@ -110,6 +146,8 @@ class HelpRequest {
     this.details = const {},
     this.seniorName,
     this.seniorPhone,
+    this.assignedVolunteerId,
+    this.assignedVolunteerName,
   });
 
   factory HelpRequest.fromJson(Map<String, dynamic> json) {
@@ -119,9 +157,10 @@ class HelpRequest {
       description: (json['description'] ?? '').toString(),
       status: helpRequestStatusFrom(json['status']?.toString()),
       priority: requestPriorityFrom(json['priority']?.toString()),
-      createdAt: _date(json['created_at']),
-      acceptedAt: _date(json['accepted_at']),
-      completedAt: _date(json['completed_at']),
+      createdAt: _date(json['created_at'] ?? json['createdAt']),
+      acceptedAt: _date(json['accepted_at'] ?? json['acceptedAt']),
+      completedAt: _date(json['completed_at'] ?? json['completedAt']),
+      dispatchedAt: _date(json['dispatched_at'] ?? json['dispatchedAt']),
       latitude: _double(json['latitude']),
       longitude: _double(json['longitude']),
       distanceM: _double(json['distance_m']),
@@ -131,6 +170,9 @@ class HelpRequest {
           : const {},
       seniorName: _seniorField(json, 'full_name'),
       seniorPhone: _seniorField(json, 'phone_number'),
+      assignedVolunteerId: _assignedField(json, 'id') ??
+          (json['assigned_volunteer_id'] ?? json['assignedVolunteerId'])?.toString(),
+      assignedVolunteerName: _assignedField(json, 'full_name'),
     );
   }
 
@@ -139,6 +181,22 @@ class HelpRequest {
     if (senior is Map && senior[key] != null) return senior[key].toString();
     return null;
   }
+
+  /// Q-02 and Q-03 both expose the assignee as a nested `assigned_volunteer`
+  /// object; Q-03 spells the inner key `full_name` in both casings.
+  static String? _assignedField(Map<String, dynamic> json, String key) {
+    for (final holder in ['assigned_volunteer', 'assignedVolunteer']) {
+      final node = json[holder];
+      if (node is Map) {
+        final value = node[key] ?? node[_camel(key)];
+        if (value != null) return value.toString();
+      }
+    }
+    return null;
+  }
+
+  static String _camel(String snake) =>
+      snake.replaceAllMapped(RegExp(r'_([a-z0-9])'), (m) => m[1]!.toUpperCase());
 
   static DateTime? _date(Object? raw) =>
       raw == null ? null : DateTime.tryParse(raw.toString())?.toLocal();
@@ -198,6 +256,7 @@ class HelpRequest {
         createdAt: createdAt,
         acceptedAt: acceptedAt,
         completedAt: completedAt,
+        dispatchedAt: dispatchedAt,
         latitude: latitude,
         longitude: longitude,
         distanceM: distanceM ?? this.distanceM,
@@ -205,6 +264,8 @@ class HelpRequest {
         details: details,
         seniorName: seniorName,
         seniorPhone: seniorPhone,
+        assignedVolunteerId: assignedVolunteerId,
+        assignedVolunteerName: assignedVolunteerName,
       );
 
   /// Great-circle distance in metres between two coordinates.
@@ -223,5 +284,47 @@ class HelpRequest {
             math.cos(rad(toLat)) *
             math.pow(math.sin(dLng / 2), 2);
     return earthRadius * 2 * math.asin(math.min(1.0, math.sqrt(a)));
+  }
+
+  // ── Senior-facing status ──────────────────────────────────────────────
+
+  /// True once a volunteer has taken the request, i.e. there is somebody to
+  /// thank. Drives the "who accepted it" panel.
+  bool get isAccepted =>
+      status == HelpRequestStatus.accepted ||
+      status == HelpRequestStatus.inProgress ||
+      status == HelpRequestStatus.completed;
+
+  /// A volunteer has been asked and nobody has taken it yet.
+  bool get isAwaitingVolunteer =>
+      status == HelpRequestStatus.dispatched ||
+      status == HelpRequestStatus.pending ||
+      status == HelpRequestStatus.matching ||
+      status == HelpRequestStatus.unassigned;
+
+  /// Still the senior's to stop.
+  bool get isCancellable =>
+      status == HelpRequestStatus.pending ||
+      status == HelpRequestStatus.matching ||
+      status == HelpRequestStatus.dispatched;
+
+  /// Headline for the "who is helping" line, e.g. `Ravi accepted your request`.
+  /// Null while nobody has accepted — callers show the waiting copy instead.
+  String? get acceptedByLabel {
+    final name = assignedVolunteerName;
+    if (name == null || name.isEmpty) return null;
+    if (status == HelpRequestStatus.inProgress) return '$name is on the way';
+    if (status == HelpRequestStatus.completed) return 'Helped by $name';
+    return '$name accepted your request';
+  }
+
+  /// When the volunteer accepted, as `accepted 2:35 pm`, or null.
+  String? get acceptedLabel {
+    final at = acceptedAt;
+    if (at == null) return null;
+    final hour = at.hour % 12 == 0 ? 12 : at.hour % 12;
+    final minute = at.minute.toString().padLeft(2, '0');
+    final meridiem = at.hour < 12 ? 'am' : 'pm';
+    return 'accepted $hour:$minute $meridiem';
   }
 }

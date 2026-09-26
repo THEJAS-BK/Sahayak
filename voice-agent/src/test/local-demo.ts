@@ -1,4 +1,5 @@
 import readline from 'readline';
+import dotenv from 'dotenv';
 import logger from '../utils/logger';
 import STTManager from '../stt';
 import TTSManager from '../tts';
@@ -373,20 +374,66 @@ When you have enough info about what they need, say you're ending the call and h
 }
 
 /**
- * Run demo with test senior
+ * Resolve the senior profile from the environment.
+ *
+ * The demo is a developer tool, so it does not invent a person: the caller
+ * supplies a real senior profile. SENIOR_ID and SENIOR_PHONE identify the
+ * senior in the backend; SENIOR_NAME and SENIOR_LANGUAGE drive the greeting
+ * and the STT/TTS route. SENIOR_ID also ends up in any request or emergency
+ * event the conversation produces, so it must be a real id.
+ */
+function resolveSeniorProfile(): SeniorProfile {
+  const seniorId = process.env.SENIOR_ID?.trim();
+  const phone = process.env.SENIOR_PHONE?.trim();
+  const name = process.env.SENIOR_NAME?.trim();
+  const language = process.env.SENIOR_LANGUAGE?.trim();
+
+  const missing = [
+    ['SENIOR_ID', seniorId],
+    ['SENIOR_PHONE', phone],
+    ['SENIOR_NAME', name],
+    ['SENIOR_LANGUAGE', language],
+  ]
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
+  if (missing.length > 0) {
+    console.error(
+      `\nMissing required environment variable(s): ${missing.join(', ')}\n\n` +
+        'The local demo runs against a real senior, so it has no built-in profile.\n' +
+        'Create a .env file (or export these) and re-run:\n\n' +
+        '  SENIOR_ID=<uuid from the backend> \\\n' +
+        '  SENIOR_PHONE=+91XXXXXXXXXX \\\n' +
+        '  SENIOR_NAME="<senior name>" \\\n' +
+        '  SENIOR_LANGUAGE=kannada|english|tulu \\\n' +
+        '  npm run demo:local\n',
+    );
+    process.exit(1);
+  }
+
+  const allowed = ['kannada', 'english', 'tulu'];
+  if (!allowed.includes(language!)) {
+    console.error(
+      `\nSENIOR_LANGUAGE must be one of ${allowed.join(', ')} — got "${language}"\n`,
+    );
+    process.exit(1);
+  }
+
+  return {
+    senior_id: seniorId!,
+    phone_number: phone!,
+    name: name!,
+    preferred_language: language as SeniorProfile['preferred_language'],
+  };
+}
+
+/**
+ * Run the demo against the senior named in the environment
  */
 async function runDemo(): Promise<void> {
-  // Test senior profile (you'll need this in your backend)
-  const testSenior: SeniorProfile = {
-    senior_id: 'test-senior-001',
-    phone_number: '+919999999999',
-    name: 'Grandma Lakshmi',
-    preferred_language: 'kannada',
-    standing_medications: ['Blood pressure medication'],
-    medical_conditions: ['Hypertension'],
-  };
+  dotenv.config();
 
-  const demo = new LocalVoiceDemo(testSenior);
+  const demo = new LocalVoiceDemo(resolveSeniorProfile());
 
   try {
     await demo.start();
