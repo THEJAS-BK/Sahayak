@@ -4,7 +4,9 @@ import { errors } from '../../lib/errors.js'
 import { asyncHandler, ok } from '../../lib/http.js'
 import { pool } from '../../database/pool.js'
 import { authenticate, requireActive, requireRole } from '../../middleware/auth.js'
-import { listPoliceRequests } from './requests.service.js'
+import { withTransaction } from '../../database/pool.js'
+import { notifyPoliceAssignment } from '../notifications/request.js'
+import { assignRequestToVolunteer, listPoliceRequests } from './requests.service.js'
 
 const router = Router()
 
@@ -19,6 +21,10 @@ const listQuerySchema = z.object({
   cursor: z.string().min(1).optional(),
 })
 
+const assignSchema = z.object({
+  volunteer_id: z.string().uuid(),
+})
+
 /** P-01 */
 router.get(
   '/',
@@ -30,6 +36,34 @@ router.get(
     if (!parsed.success) throw errors.badRequest('Invalid query parameters')
     const result = await listPoliceRequests(pool, parsed.data)
     ok(res, result)
+  }),
+)
+
+/** P-03: hand a request to one named volunteer. */
+router.patch(
+  '/:id/assign',
+  authenticate,
+  requireRole('police'),
+  requireActive,
+  asyncHandler(async (req, res) => {
+    const parsed = assignSchema.safeParse(req.body)
+    if (!parsed.success) throw errors.badRequest('volunteer_id must be a UUID')
+
+    const requestId = String(req.params.id)
+    const result = await withTransaction((db) =>
+      assignRequestToVolunteer(db, req.user as { id: string }, requestId, parsed.data.volunteer_id),
+    )
+    ok(res, result)
+
+    void notifyPoliceAssignment(
+      {
+        email: result.volunteer.email,
+        fcmToken: result.volunteer.fcm_token,
+        fullName: result.volunteer.full_name,
+      },
+      { email: result.senior.email, fcmToken: result.senior.fcm_token },
+      { id: result.request_id, category: result.category },
+    )
   }),
 )
 

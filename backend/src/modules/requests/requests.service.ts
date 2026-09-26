@@ -257,6 +257,76 @@ export async function acceptRequest(
   return { request_id: r.id, status: 'ACCEPTED' }
 }
 
+/**
+ * Q-05 sibling: a volunteer turning down a request they were offered.
+ *
+ * This deliberately does NOT move the request out of DISPATCHED — other
+ * volunteers can still take it, and the senior should not be told anything has
+ * failed. What changes is that this volunteer stops being offered it, which is
+ * what the previous in-app "skip" failed to do (it only hid the card in RAM, so
+ * the request reappeared on the next refresh).
+ *
+ * Idempotent: declining twice is a no-op, not an error, because a double tap on
+ * a phone is routine. Being police-assigned later still works — the offer is
+ * explicit and outranks an earlier decline.
+ */
+export async function declineRequest(
+  db: Queryable,
+  user: { id: string },
+  requestId: string,
+  reason?: string,
+): Promise<{ request_id: string; declined: true; already_declined: boolean }> {
+  const res = await db.query(
+    `SELECT hr.id, hr.status, hr.assigned_volunteer_id, hr.dispatch_batch
+     FROM help_requests hr
+     WHERE hr.id = $1
+     FOR UPDATE OF hr`,
+    [requestId],
+  )
+  if (res.rowCount === 0) throw errors.notFound('Request not found')
+  const request = res.rows[0]
+
+  if (request.status !== 'DISPATCHED') {
+    throw errors.conflict(
+      'NOT_DISPATCHED',
+      request.assigned_volunteer_id === user.id
+        ? 'You already accepted this request, so you cannot decline it'
+        : 'This request is no longer open for new volunteers',
+    )
+  }
+
+  // You may only decline what was actually offered to you.
+  const offered =
+    request.assigned_volunteer_id === user.id ||
+    (Array.isArray(request.dispatch_batch) &&
+      (request.dispatch_batch as Array<{ id: string }>).some((e) => e.id === user.id))
+  if (!offered) {
+    throw errors.forbidden('FORBIDDEN', 'This request was not offered to you')
+  }
+
+  const inserted = await db.query(
+    `INSERT INTO request_declines (request_id, volunteer_id, reason)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (request_id, volunteer_id) DO NOTHING
+     RETURNING request_id`,
+    [requestId, user.id, reason ?? null],
+  )
+  const alreadyDeclined = (inserted.rowCount ?? 0) === 0
+
+  if (!alreadyDeclined) {
+    await writeAudit(db, {
+      actorId: user.id,
+      action: 'request.declined',
+      entityType: 'help_request',
+      entityId: requestId,
+      before: { status: 'DISPATCHED', declined_by: null },
+      after: { status: 'DISPATCHED', declined_by: user.id, reason: reason ?? null },
+    })
+  }
+
+  return { request_id: requestId, declined: true, already_declined: alreadyDeclined }
+}
+
 /** Q-06: ACCEPTED → IN_PROGRESS → COMPLETED, only by the assigned volunteer. */
 export async function updateRequestStatus(
   db: Queryable,
@@ -390,6 +460,13 @@ export async function nearbyRequests(
      WHERE hr.status = 'DISPATCHED'
        AND EXISTS (SELECT 1 FROM jsonb_array_elements(hr.dispatch_batch) e WHERE e->>'id' = $3)
        AND NOT EXISTS (SELECT 1 FROM help_requests mine WHERE mine.assigned_volunteer_id = $3::uuid AND mine.status IN ('ACCEPTED','IN_PROGRESS'))
+       AND (
+         -- A decline only hides the request from the volunteer who made it...
+         NOT EXISTS (SELECT 1 FROM request_declines rd WHERE rd.request_id = hr.id AND rd.volunteer_id = $3::uuid)
+         -- ...unless police assigned it to them by hand afterwards (P-05), which
+         -- is an explicit human decision and outranks an earlier decline.
+         OR hr.assigned_volunteer_id = $3::uuid
+       )
      ORDER BY distance_m ASC
      LIMIT 50`,
     [opts.latitude, opts.longitude, user.id],
