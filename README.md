@@ -24,7 +24,7 @@ for the original setup plan.
 
 - Node.js >= 20 (developed against v22)
 - npm
-- PostgreSQL (rootless dev instance via `scripts/dev-db.sh`, port 5433)
+- PostgreSQL 18 on port 5432 (the server pgAdmin registers as `postgres`)
 
 ### Run
 
@@ -32,12 +32,19 @@ for the original setup plan.
 cd backend
 npm install               # install dependencies
 
-# Start the rootless dev Postgres instance (port 5433)
-npm run db:start
-npm run db:reset          # run all migrations on the dev database
+npm run db:migrate         # apply pending migrations to :5432
 
 npm run dev               # start dev server -> http://localhost:3000
 ```
+
+PostgreSQL 18 must already be running on `:5432` (the server pgAdmin registers as
+`postgres`) — see `plans/pg-db-connection.md`. `npm run db:start` is only for the
+alternative rootless cluster on `:5433`, which nothing points at by default.
+
+`npm run db:reset` drops the database schema and reapplies all migrations,
+which deletes all existing data. Use it only for a clean setup or when you
+intentionally want to reset the database; use `npm run db:migrate` for normal
+startup.
 
 Other scripts:
 
@@ -48,8 +55,8 @@ npm run typecheck         # type-check only (no emit)
 npm test                  # run the Vitest test suite
 npm run db:migrate        # apply pending migrations only
 npm run db:down           # revert the last migration
-npm run db:seed           # seed the dev database (fails if data already exists)
-npm run db:seed:fresh     # wipe business tables, then reseed
+npm run db:seed           # create the single police account from POLICE_BOOTSTRAP_EMAIL (fails if it already exists)
+npm run db:seed:fresh     # wipe business tables, then run the bootstrap again
 ```
 
 ### Environment
@@ -59,7 +66,7 @@ Copy `.env.example` to `.env` and edit. Key variables:
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `3000` | Server listen port |
-| `DATABASE_URL` | — | `postgres://sahayak@localhost:5433/sahayak` |
+| `DATABASE_URL` | — | `postgres://postgres:postgres@localhost:5432/sahayak` |
 | `DATABASE_URL_TEST` | `DATABASE_URL` | Vitest target database |
 | `JWT_SECRET` | — | Random string ≥ 32 chars |
 | `JWT_ACCESS_TTL` | `15m` | Access token lifetime |
@@ -102,8 +109,9 @@ npm install       # install dependencies
 npm run dev       # start dev server -> http://localhost:5173
 ```
 
-Sign in at `/login` with an officer account (seed: `ashok.kini@example.com`,
-dev OTP `123456`) — or paste a JWT.
+Sign in at `/login` with the single police account created by `npm run db:seed`
+(from `POLICE_BOOTSTRAP_EMAIL` — dev value `police@gmail.com`; dev OTP
+`123456`) — or paste a JWT.
 
 Other scripts:
 
@@ -176,7 +184,8 @@ client:
   audit logs).
 
 The data mirrors the contracts in `plans/api-plan.md` and the wireframes in
-`plans/client-design/`. The same personas (Anitha Devi, Karthik Shetty, …) plus
-a police officer, requests, emergencies and audit logs can be loaded into the
-dev database with `npm run db:seed` (see `backend/scripts/seed.ts`). See
-`data/README.md` for the file-by-file guide.
+`plans/client-design/`. It is a reference for contracts and UI shapes, not
+loaded into the dev database — `npm run db:seed` creates only the single police
+account from `POLICE_BOOTSTRAP_EMAIL`, and seniors and volunteers come from
+registering in the mobile app and being approved in the portal (see
+`backend/scripts/seed.ts`). See `data/README.md` for the file-by-file guide.

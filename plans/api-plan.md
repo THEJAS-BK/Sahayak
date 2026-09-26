@@ -41,6 +41,7 @@ then the contracts that need pinning down.
 | Q-03 | GET | `/api/requests/:id` | required | senior, volunteer, police | One request, role-filtered |
 | Q-04 | GET | `/api/requests/nearby` | required | volunteer | DISPATCHED requests near me |
 | Q-05 | PATCH | `/api/requests/:id/accept` | required | volunteer | Accept (first-wins) |
+| Q-05b | PATCH | `/api/requests/:id/decline` | required | volunteer | Turn down an offer (per-volunteer, request stays live) |
 | Q-06 | PATCH | `/api/requests/:id/status` | required | volunteer | → IN_PROGRESS / COMPLETED |
 | Q-07 | PATCH | `/api/requests/:id/cancel` | required | senior | Cancel before ACCEPTED |
 | Q-08 | GET | `/api/requests/:id/volunteer` | required | senior | Assigned volunteer contact |
@@ -120,6 +121,8 @@ Vitest suite. Two body/response notes worth keeping in mind (details in
 - Query: `lat`, `lng`, `radius_m` (default 5000, max 20000). DISPATCHED
   requests within radius whose `dispatch_batch` includes this volunteer, by
   distance. Never exposes senior phone.
+- Excludes requests this volunteer already declined (Q-05b), unless police
+  assigned the request to them afterwards.
 
 ### Q-05 PATCH /api/requests/:id/accept
 - Preconditions (403): volunteer, approved, available, no other
@@ -127,6 +130,21 @@ Vitest suite. Two body/response notes worth keeping in mind (details in
   `UPDATE help_requests SET status='ACCEPTED', assigned_volunteer_id=$1, accepted_at=now()
    WHERE id=$2 AND status='DISPATCHED' RETURNING *` → 0 rows ⇒ 409
   ALREADY_ASSIGNED. Snapshots volunteer position. Notify senior (post-commit).
+
+### Q-05b PATCH /api/requests/:id/decline
+- Body: `{ reason?: string (max 280) }`. Volunteer, approved, and the request
+  must be DISPATCHED **and** offered to this caller (403 `FORBIDDEN` if not).
+- Does **not** change `help_requests.status`: other volunteers can still take
+  it and the senior is not notified, because nothing has failed. Inserts
+  `request_declines(request_id, volunteer_id)`, which `/nearby` filters out, so
+  the volunteer stops being re-asked (previously the app only hid the card in
+  RAM, so it reappeared on the next refresh).
+- Idempotent — a double tap returns `already_declined: true`, not an error.
+- 409 `NOT_DISPATCHED` if already ACCEPTED/IN_PROGRESS/completed.
+- Police hand-assignment (P-05) overrides a decline: `/nearby` still shows the
+  request when `assigned_volunteer_id` is the caller, because an officer
+  deciding this person should do it outranks their earlier refusal.
+- Audit `request.declined`.
 
 ### Q-06 PATCH /api/requests/:id/status
 - Body: `{ status: "IN_PROGRESS" | "COMPLETED" }`. Must be the assigned
@@ -157,6 +175,41 @@ Vitest suite. Two body/response notes worth keeping in mind (details in
 ### P-02 GET /api/audit-logs
 - Query: `entity_type?`, `entity_id?`, `actor_id?`, `action?`, `from?`, `to?`,
   `limit`, `cursor?`. `created_at DESC`. Read-only.
+
+### P-04 GET /api/police/volunteers
+- Query: `lat?`, `lng?` (distance + ordering), `available?`, `search?`, `limit`.
+- Police only. The dispatch directory for manual assignment. Unlike the
+  automatic matcher it ignores the dispatch radius and batch size, so an
+  officer can reach a volunteer the matcher never offered.
+- **Ordering is "whoever can take it", not "nearest".** Volunteer coordinates
+  are not trustworthy yet (`base_*` is a registration-time locality guess, and
+  `current_*` only exists during an active job), so a distance sort would be
+  false precision; the list orders `can_assign` first and omits distance until
+  real positions are fed in. Pass `lat`/`lng` and it switches to
+  distance-ordered. Tracked in `plans/deferred-before-production.md` §2.
+- Off-duty volunteers and volunteers already on a job are still listed, flagged
+  with `can_assign: false` plus the individual flags, so the UI can explain a
+  refusal instead of hiding people.
+- 200 `{ volunteers: [{ id, email, full_name, phone_number, organization,
+  skills, is_available, is_verified, latitude, longitude, distance_m,
+  has_active_assignment, active_request_id, can_assign }], next_cursor }`.
+
+### P-05 PATCH /api/police/requests/:id/assign
+- Body: `{ volunteer_id }`. Police only. Manual dispatch, added because
+  automatic dispatch can fail (no candidate, or `UNASSIGNED` after
+  `MAX_DISPATCH_ATTEMPTS`) and a senior cannot be left waiting.
+- Source status must be `PENDING`, `MATCHING` or `DISPATCHED` (BR-04). Any
+  other state ⇒ 409.
+- The volunteer must be an active, approved, **on-duty** volunteer with no other
+  active assignment (BR-05). Availability is not overridable: Q-05 refuses an
+  accept from an off-duty volunteer, so handing them the request would strand
+  the senior.
+- Sets `status = DISPATCHED`, `assigned_volunteer_id`, and appends the volunteer
+  to `dispatch_batch` (without which Q-04 would never show it to them) with a
+  position snapshot + distance. `accepted_at` stays null — police chooses who is
+  asked, the volunteer still has to accept. Audit + post-commit notification to
+  both sides.
+- 200 `{ request_id, status, category, volunteer, senior }`.
 
 ## Business rules
 

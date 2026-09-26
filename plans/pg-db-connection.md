@@ -1,84 +1,93 @@
-# Connecting to the pgAdmin PostgreSQL Instance
+# Connecting to PostgreSQL
 
-Date: 2026-09-18
+Last verified: 2026-09-26
 
-## Goal
+## The one thing to get right
 
-Point the Sahayak backend at the pgAdmin-managed PostgreSQL instance instead of the rootless dev DB (`scripts/dev-db.sh`) that runs on port 5433.
-
-## Prerequisites
-
-- pgAdmin installed with a PostgreSQL server listening on `localhost:5432`
-- Database role credentials: user `postgres`, password `postgres`
-- Backend repo at `backend/`
-
-## Steps
-
-### 1. Verify the connection
-
-```bash
-PGPASSWORD=postgres /usr/pgsql-18/bin/psql -h localhost -p 5432 -U postgres -d postgres -c "SELECT version();"
-```
-
-Succeeded: `PostgreSQL 18.6 on x86_64-pc-linux-gnu ...`
-
-If authentication fails (`FATAL: password authentication failed for user "postgres"`),
-the DB role password differs from what was typed in pgAdmin — confirm the role password
-in pgAdmin → Server → Properties → Connection.
-
-### 2. Create the databases (idempotent)
-
-```bash
-for db in sahayak sahayak_test; do
-  exists=$(PGPASSWORD=postgres /usr/pgsql-18/bin/psql -h localhost -p 5432 -U postgres -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$db'")
-  if [ "$exists" = "1" ]; then
-    echo "database '$db' already exists"
-  else
-    PGPASSWORD=postgres /usr/pgsql-18/bin/createdb -h localhost -p 5432 -U postgres "$db" && echo "created '$db'"
-  fi
-done
-```
-
-### 3. Point `backend/.env` at the new instance
+Since 2026-09-26 the backend uses **port 5432**, the PostgreSQL 18 server
+registered in pgAdmin as `postgres`, with the databases owned by the `postgres`
+superuser.
 
 ```env
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/sahayak
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/sahayak        # in backend/.env
 DATABASE_URL_TEST=postgres://postgres:postgres@localhost:5432/sahayak_test
 ```
 
-### 4. Apply migrations
+**Connect a GUI to 5432** — that is where the live data is.
+
+The earlier 5432 attempt (2026-09-18) was abandoned mid-way and left fabricated
+seeder rows behind. That database has since been dropped and rebuilt from
+migrations, so those personas (`anitha.dev@example.com` and friends) are gone
+for good. If you ever see them, you are looking at a different instance.
+
+## The other server on this machine (5433)
+
+A second, rootless cluster still exists on port 5433 (data dir
+`backend/.pgdata`, started by `backend/scripts/dev-db.sh`, role `sahayak`, no
+password). **Nothing points at it any more.** It is kept only as a fallback, so
+reverting is a two-line change in `backend/.env` plus `npm run db:start`. Do not
+run migrations against both at once and be surprised by divergent data.
+
+## If you see fabricated data, you are on the wrong port
+
+There is a **second, unrelated PostgreSQL server on port 5432** (the pgAdmin /
+distro install, user `postgres`, password `postgres`). Nothing in the running
+stack points at it. Its `sahayak` database still holds the personas from the
+original fake-data seeder — `anitha.dev@example.com`, `ganesh.rao@example.com`,
+`divya.poojary@example.com` and friends, 16 users / 13 requests / 17 audit rows
+as of 2026-09-26.
+
+Those rows are **not** what the app reads. They are a leftover from before the
+seeder was replaced, left behind by the abandoned move to pgAdmin documented
+below. Seeing them means your client is pointed at 5432.
+
+Check which one you are on:
 
 ```bash
-cd backend && npm run db:migrate
+export PATH=/usr/pgsql-18/bin:$PATH PGPASSWORD=postgres
+
+# Should contain police@gmail.com and nothing else.
+psql -h 127.0.0.1 -p 5432 -U postgres -d sahayak -c \
+  "SELECT email, role FROM users ORDER BY email;"
+
+# Should be 0 in a freshly seeded database.
+psql -h 127.0.0.1 -p 5432 -U postgres -d sahayak -c \
+  "SELECT count(*) FROM help_requests;"
 ```
 
-Result: all 9 migrations applied (`bootstrap … registration_identity_fields`).
+A correctly seeded dev database contains exactly one row in `users`
+(`police@gmail.com`) and nothing in any business table — seniors and
+volunteers only appear once a person registers through the real UI and an
+officer approves them. See `backend/scripts/seed.ts`.
 
-### 5. Seed demo data (optional)
-
-Load the `data/` personas into the dev database so the frontend has realistic
-rows to render:
+## Migrations and seed
 
 ```bash
-cd backend && npm run db:seed        # fails if tables already contain data
-cd backend && npm run db:seed:fresh  # wipes business tables, then reseeds
+cd backend
+npm run db:migrate                 # 10 migrations
+npm run db:seed                    # police account only; refuses if data exists
+npm run db:seed:fresh              # wipe business tables, then bootstrap police
 ```
 
-Seeds: 1 police officer, 5 seniors, 4 volunteers, 3 pending registrations,
-requests in every state, emergencies and audit logs — see
-`backend/scripts/seed.ts`. Note the dev server's BG-01 sweep re-dispatches and
-eventually `UNASSIGN`s seeded `DISPATCHED` requests; stop it before seeding if
-you need that state to persist.
+`POLICE_BOOTSTRAP_EMAIL` in `backend/.env` decides which account is created.
 
-### 6. Restart the backend
+## Tests use a different database
+
+`vitest.config.ts` points both `DATABASE_URL` and `DATABASE_URL_TEST` at
+`sahayak_test` on the same server, so running the suite never touches dev data:
 
 ```bash
-cd backend && npm run dev
+npm test                           # 68 tests, all against sahayak_test
 ```
 
-## Result
+## Connecting a GUI
 
-- Dev database: `postgres://postgres:postgres@localhost:5432/sahayak`
-- Test database: `postgres://postgres:postgres@localhost:5432/sahayak_test`
-- Inspect via pgAdmin (localhost:5432, user `postgres`) or psql
-- The rootless DB (port 5433) remains untouched; don't run both migrations on the same schema
+| | |
+|---|---|
+| Host | `localhost` |
+| Port | **5432** |
+| User | `postgres` |
+| Password | `postgres` |
+| Database | `sahayak` (dev) or `sahayak_test` (tests) |
+
+---

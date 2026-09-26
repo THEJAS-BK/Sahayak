@@ -76,9 +76,11 @@ mobile/senior_home_screen.dart "Click to Speak"
 
 livekit-voice-agent/agent.py joins the same room:
    STT(AssemblyAI) → LLM(GPT-4.1-mini) → TTS(Cartesia), VAD(Silero)
-   └► when a need is captured, function_tool record_help_request publishes
-        {category, description, priority, details} on data topic "sahayak_request"
-   └► app listens on that topic and forwards the payload to POST /api/requests
+   └► when a need is captured, function_tool record_help_request publishes a
+        v1 envelope {v, type, request_id, request} (category, description,
+        priority, details) on data topic "sahayak_request"
+   └► app parses it (voice_payload.dart), injects lat/lng + source:"voice_agent",
+        and forwards to POST /api/requests (dedupe by request_id)
    └► agent's reply confirms: "…a volunteer will be in touch shortly."
 ```
 

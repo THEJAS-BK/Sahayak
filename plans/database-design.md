@@ -165,7 +165,23 @@ Indexes: `(status, dispatched_at)` (sweep), `(assigned_volunteer_id)`.
 
 Indexes: `(status)`, `(senior_id, created_at DESC)`.
 
-### 10. `audit_logs`
+### 10. `request_declines`
+
+| column | type | notes |
+|---|---|---|
+| `request_id` | uuid NOT NULL FK→help_requests | ON DELETE CASCADE |
+| `volunteer_id` | uuid NOT NULL FK→users | ON DELETE CASCADE |
+| `reason` | text NULL | free text from the app |
+| `created_at` | timestamptz NOT NULL | default `now()` |
+
+Indexes: unique `(request_id, volunteer_id)` (one decline per volunteer, makes
+the endpoint idempotent), `(volunteer_id)` for the `/nearby` filter.
+
+Deliberately **not** a `help_requests.status`: a decline belongs to one
+volunteer, the request stays DISPATCHED for everyone else, and the senior is
+not notified.
+
+### 11. `audit_logs`
 
 | column | type | notes |
 |---|---|---|
@@ -205,10 +221,11 @@ PENDING ─(match)─► MATCHING ──► DISPATCHED ─(accept)─► ACCEPTE
   emergencies → emergency_events; `audit_logs` early since phases 1+ write it).
 - Dev seeding lives in `backend/scripts/seed.ts`, run via `npm run db:seed`
   (empty tables only) / `npm run db:seed:fresh` (wipes business tables first).
-  It loads the `data/` personas — a police officer, 5 seniors, 4 volunteers,
-  3 pending registrations, requests in every state (BR-13: one open request per
-  senior), emergencies and audit logs — with `now()`-relative timestamps so the
-  data stays fresh. The test suite is unaffected: it stays fixture-driven
+  It creates exactly one police account, the address in `POLICE_BOOTSTRAP_EMAIL`
+  (dev value `police@gmail.com`) — no fabricated personas. Seniors and
+  volunteers exist only after they register in the mobile app and the police
+  account approves them; requests, emergencies and audit logs follow from real
+  use. The test suite is unaffected: it stays fixture-driven
   against the test database (created/dropped by vitest global setup).
 
 ## Distance in SQL (matching)
