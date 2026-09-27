@@ -5,10 +5,13 @@
 ## Runtime shape
 
 - Single Node.js ≥ 20 + TypeScript (ESM, NodeNext) Express 5 process.
-- One PostgreSQL database (node-postgres `pg` pool).
-- Background jobs run **in-process** via `node-cron` (no separate worker).
-- External services: SMTP (nodemailer) and FCM (firebase-admin). Both are
-  behind a notification adapter that can log-only in development.
+- One shared PostgreSQL database on Neon (node-postgres `pg` pool), reached
+  through the pooled endpoint. A separate test database is required.
+- Background jobs run **in-process** via `node-cron` (no separate worker):
+  the dispatch sweep and the daily cleanup sweep.
+- External services: SMTP (nodemailer) is the only delivery channel that ships.
+  Push is not implemented — `sendPush` logs — and the `firebase-admin` dependency
+  is gone. Both sit behind a notification adapter that can log-only.
 - No queues, Redis, microservices, or WebSockets in the backend.
 
 ```text

@@ -56,7 +56,7 @@ export async function resetDb(): Promise<void> {
   try {
     await client.query(
       `TRUNCATE TABLE
-        firebase_sync_outbox, audit_logs, emergency_events, help_requests, refresh_tokens,
+        audit_logs, emergency_events, help_requests, refresh_tokens,
         otp_attempts, otp_codes, user_verifications, senior_profiles,
         volunteer_profiles, users
        CASCADE`,

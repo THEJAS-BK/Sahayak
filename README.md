@@ -81,8 +81,6 @@ Copy `.env.example` to `.env` and edit. Key variables:
 | `MAX_DISPATCH_ATTEMPTS` | `3` | Retries before `UNASSIGNED` |
 | `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | (empty) | Voice agent (LiveKit) credentials |
 | `SMTP_*` | (empty) | Required only in `NODE_ENV=production` |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | (empty) | Path or inline JSON; needed only for the Firestore mirror |
-| `FCM_ENABLED` | `false` | Push delivery. Off; the mirror works without it |
 
 ### Health check
 

@@ -103,8 +103,9 @@ unbuilt rather than invented, because a guessed contract is harder to unpick
 than a missing page.
 
 If it means "live", the portal currently polls nothing and would need a push
-channel. The Firestore mirror (`firebase-dual-write.md`) is the natural transport
-but it is a read replica and cannot drive writes.
+channel. Nothing in the backend provides one: the Firestore mirror has been
+removed and push notifications are not implemented, so this would be built from
+scratch (server-sent events, or a WebSocket) rather than switched on.
 
 ### Map — no backend work needed, but a dependency decision
 

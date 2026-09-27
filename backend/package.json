@@ -17,17 +17,13 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:seed:fresh": "tsx scripts/seed.ts --fresh",
     "e2e:real": "tsx scripts/e2e-real-flow.ts",
-    "e2e:assign": "tsx scripts/e2e-police-assign.ts",
-    "firebase:backfill": "tsx scripts/firebase-sync.ts backfill",
-    "firebase:sync:status": "tsx scripts/firebase-sync.ts status",
-    "firebase:sync:retry": "tsx scripts/firebase-sync.ts retry"
+    "e2e:assign": "tsx scripts/e2e-police-assign.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
-    "firebase-admin": "^14.4.0",
     "jsonwebtoken": "^9.0.3",
     "livekit-server-sdk": "^2.19.1",
     "node-cron": "^4.6.0",
