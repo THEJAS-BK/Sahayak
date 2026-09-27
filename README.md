@@ -24,7 +24,8 @@ for the original setup plan.
 
 - Node.js >= 20 (developed against v22)
 - npm
-- PostgreSQL 18 on port 5432 (the server pgAdmin registers as `postgres`)
+- A **Neon** Postgres project. Use the *pooled* connection string. There is no
+  local Postgres, and the app never creates or drops a database.
 
 ### Run
 
@@ -57,9 +58,30 @@ npm run typecheck         # type-check only (no emit)
 npm test                  # run the Vitest test suite
 npm run db:migrate        # apply pending migrations only
 npm run db:down           # revert the last migration
-npm run db:seed           # create the single police account from POLICE_BOOTSTRAP_EMAIL (fails if it already exists)
+npm run db:seed           # create/update the police account from POLICE_BOOTSTRAP_EMAIL (idempotent)
+npm run db:seed -- --demo # additionally seed a demo senior, a demo volunteer and two help requests
 npm run db:seed:fresh     # wipe business tables, then run the bootstrap again
 ```
+
+`db:seed` is safe to re-run: it upserts the police account rather than failing if
+it exists. `--demo` is likewise idempotent — it recreates the two `[demo]` help
+requests and leaves real ones alone, which makes it the quickest way to get a
+populated portal. See `backend/scripts/seed.ts`.
+
+### How a help request reaches volunteers
+
+Creating a request offers it to **every** on-duty volunteer inside
+`MATCH_RADIUS_M` (nearest first), not to one selected volunteer. The batch is
+cumulative, so a retry that finds nobody new leaves it intact and everyone
+already offered the request can still accept — first to accept wins. A request
+nobody takes within `DISPATCH_TIMEOUT_S` is re-offered, up to
+`MAX_DISPATCH_ATTEMPTS`, then becomes `UNASSIGNED` for police.
+
+> **Delivery is email-only right now.** The push adapter in
+> `backend/src/modules/notifications/push.ts` logs and sends nothing — there is
+> no Firebase. On a phone, a request is seen by polling `GET
+> /api/requests/nearby`, so notification of an already-backgrounded app depends
+> on that poll. See `plans/deferred-before-production.md` §3.
 
 ### Environment
 
@@ -75,8 +97,8 @@ Copy `.env.example` to `.env` and edit. Key variables:
 | `JWT_ACCESS_TTL` | `15m` | Access token lifetime |
 | `JWT_REFRESH_TTL` | `90d` | Refresh token lifetime |
 | `OTP_DEV_CODE` | — | Dev-only fixed OTP (e.g. `123456`) |
-| `MATCH_RADIUS_M` | `5000` | Candidate search radius (metres) |
-| `DISPATCH_BATCH_SIZE` | `5` | Volunteers per dispatch batch |
+| `MATCH_RADIUS_M` | `5000` | Candidate search radius (metres); doubled for urgent requests |
+| `DISPATCH_BATCH_SIZE` | `100` | Safety cap on volunteers per dispatch batch. The real bound is `MATCH_RADIUS_M` — this only guards against a pathological blast, so expect to tune it |
 | `DISPATCH_TIMEOUT_S` | `90` | Stale dispatch re-try window (seconds) |
 | `MAX_DISPATCH_ATTEMPTS` | `3` | Retries before `UNASSIGNED` |
 | `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | (empty) | Voice agent (LiveKit) credentials |
@@ -94,6 +116,12 @@ curl http://localhost:3000/health
 ```bash
 npm test                  # runs against DATABASE_URL_TEST; no manual DB setup needed
 ```
+
+`DATABASE_URL_TEST` must point at a real, already-migrated **Neon test branch**
+— the suite truncates every table, so it refuses to start if the value is unset
+or equal to `DATABASE_URL`. Create the branch in the Neon console, copy its
+pooled URL, migrate it once with `npm run db:migrate`, and only then run the
+suite against it. See `plans/pg-db-connection.md`.
 
 ## Web (React police portal)
 
@@ -206,6 +234,8 @@ client:
 The data mirrors the contracts in `plans/api-plan.md` and the wireframes in
 `plans/client-design/`. It is a reference for contracts and UI shapes, not
 loaded into the dev database — `npm run db:seed` creates only the single police
-account from `POLICE_BOOTSTRAP_EMAIL`, and seniors and volunteers come from
-registering in the mobile app and being approved in the portal (see
-`backend/scripts/seed.ts`). See `data/README.md` for the file-by-file guide.
+account from `POLICE_BOOTSTRAP_EMAIL` (and `npm run db:seed -- --demo` adds a
+throwaway senior, volunteer and two help requests), while real seniors and
+volunteers come from registering in the mobile app and being approved in the
+portal (see `backend/scripts/seed.ts`). See `data/README.md` for the file-by-file
+guide.
