@@ -2,7 +2,7 @@ import { config } from "../config/index.js";
 import { withTransaction } from "../database/pool.js";
 import { writeAudit } from "../database/audit.js";
 import { logger } from "../lib/logger.js";
-import { findCandidates, markDispatched } from "../modules/matching/matching.service.js";
+import { markDispatched } from "../modules/matching/matching.service.js";
 import { notifyDispatch } from "../modules/notifications/request.js";
 import { notifyPolice } from "../modules/notifications/police.js";
 import type { Queryable } from "../database/pool.js";
@@ -48,7 +48,7 @@ async function sweepOnce(db: Queryable, outcome: SweepOutcome): Promise<void> {
     // available, which includes the volunteers already sitting in its batch.
     // Searching with the batch excluded — to avoid duplicate notifications —
     // would find nobody here and leave the request stranded forever, because
-    // the only volunteer in range is the one we just excluded.
+    // the only volunteers in range are the ones we just excluded.
     if (row.status === 'UNASSIGNED') {
       const request = {
         id: requestId,
@@ -57,26 +57,18 @@ async function sweepOnce(db: Queryable, outcome: SweepOutcome): Promise<void> {
         longitude: Number(row.longitude),
         priority: row.priority as "normal" | "urgent",
       };
-      const radius =
-        row.priority === 'urgent' ? config.matching.radiusM * 2 : config.matching.radiusM;
-      const available = await findCandidates(db, {
-        latitude: request.latitude,
-        longitude: request.longitude,
-        radiusM: radius,
-        category: request.category,
-        limit: config.matching.batchSize,
-      });
-      if (available.length === 0) {
+      // onlyIfCandidate: this sweep is polling for availability, not
+      // dispatching. With nobody in range it must leave the row alone rather
+      // than rewrite UNASSIGNED to DISPATCHED and imply somebody was told.
+      // Resetting the attempt counter is deliberate too: the request is starting
+      // a genuinely new chance, and keeping the exhausted count would make the
+      // very next sweep flip it straight back to UNASSIGNED.
+      const { candidates: available, dispatched } = await markDispatched(db, request, 0, { onlyIfCandidate: true });
+      if (!dispatched) {
         // Nobody yet. Leave it UNASSIGNED so the sweep keeps retrying, without
         // burning an attempt or re-alerting the police every 30 seconds.
         continue;
       }
-
-      // Reset the attempt counter. The request is starting a genuinely new
-      // chance, and keeping the exhausted count would make the very next sweep
-      // see `attempt >= maxAttempts` and flip it straight back to UNASSIGNED —
-      // recovery and exhaustion would fight each other every 30 seconds.
-      await markDispatched(db, request, 0);
       outcome.recovered += 1;
       // Only somebody who was not already in the batch needs telling. The
       // others were notified when the request was first dispatched.
@@ -113,11 +105,16 @@ async function sweepOnce(db: Queryable, outcome: SweepOutcome): Promise<void> {
         after: { status: "DISPATCHED", dispatch_attempt: attempt + 1 },
       });
       outcome.redispatched += 1;
-      outcome.newBatches.push({
-        requestId,
-        category: row.category,
-        candidates: candidates.map((c) => ({ id: c.id, fcmToken: c.fcmToken })),
-      });
+      // An empty result means the batch was left as-is and nobody new is
+      // re-notified: everyone already offered it can still accept, and re-pinging
+      // the same phones every 30s would just be noise.
+      if (candidates.length > 0) {
+        outcome.newBatches.push({
+          requestId,
+          category: row.category,
+          candidates: candidates.map((c) => ({ id: c.id, fcmToken: c.fcmToken })),
+        });
+      }
     } else {
       await db.query(
         `UPDATE help_requests SET status = 'UNASSIGNED' WHERE id = $1`,
@@ -232,7 +229,5 @@ export function startBackgroundJobs() {
     void guardedCleanup();
   });
 
-  logger.info(
-    "[bg] background jobs scheduled (dispatch sweep 30s, cleanup daily 03:15)",
-  );
+  logger.info("[bg] background jobs scheduled (dispatch sweep 30s, cleanup daily 03:15)");
 }

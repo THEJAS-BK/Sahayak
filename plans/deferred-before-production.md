@@ -104,8 +104,12 @@ remains is `base_latitude` / `base_longitude`, which is whatever locality the
 volunteer typed at registration — for most users that is a neighbourhood, not a
 point. Sorting on it produces confident wrong answers: "620 m away" between two
 people in different parts of the city, and a volunteer at the bottom of the list
-who could actually walk there. The automatic matcher (Q-02) has the same
-limitation and is likewise unproven for accuracy.
+who could actually walk there.
+
+**This is load-bearing, not cosmetic.** Every created request is fanned out to
+every on-duty volunteer inside the radius, so the distance calculation decides
+*which phones ring* — not just the order of a list a human reads. A bad
+coordinate does not degrade the feature, it misdirects it. See §4.
 
 **The backend already supports the fix.** P-04 accepts `lat`/`lng` and returns
 `distance_m`, ordering `can_assign DESC, distance_m ASC`. Nothing needs to be
@@ -123,8 +127,8 @@ rebuilt — only better coordinates fed in.
 4. Decide the product rule this exposes: if *no* volunteer is within
    `MATCH_RADIUS_M`, does police get offered the nearest anyway with a warning,
    or nothing? Today, manual dispatch is the only way such a request is served.
-5. Then re-check Q-02 auto-dispatch accuracy against real data before trusting
-   it to silently dispatch.
+5. Then re-check auto-dispatch accuracy against real data before trusting it to
+   notify anybody.
 
 **Done when.** Distance is shown in the dialog, the ordering is stable, and the
 displayed distances match reality for a few volunteers you check by hand.
@@ -145,12 +149,19 @@ integration to debug, it is an absent one:
 | `backend/src/modules/users/users.routes.ts:30` (the route) | exists, unused |
 | `users.fcm_token` | nullable, so `NULL` for every volunteer |
 
-**Why nothing arrives.** `pushOrLog`
-(`backend/src/modules/notifications/request.ts:10`) returns immediately when the
-token is null. Since no client ever registers one, every volunteer has
-`fcm_token IS NULL`, so `notifyDispatch` fans out to nobody, every time,
-without a single error. A dispatched request produces **zero** notifications and
-logs **zero** failures — it looks completely healthy.
+**Why nothing arrives.** Two separate gaps now, and both are silent. First,
+`sendPush` in `backend/src/modules/notifications/push.ts` is a **log-only stub**
+— the `firebase-admin` SDK and its credential were removed along with the
+Firestore mirror, so a push "succeeds" by writing a line to the log. Second,
+`pushOrLog` (`backend/src/modules/notifications/request.ts`) returns immediately
+when the token is null, and no client ever registers one, so every volunteer has
+`fcm_token IS NULL`. So `notifyDispatch` notifies nobody, every time, without a
+single error. A dispatched request produces **zero** notifications and logs
+**zero** failures — it looks completely healthy.
+
+The `fcm_token` column and the call sites that populate it were deliberately
+left in place, so this is a delivery gap rather than a data-model gap. They are
+simply unused until push is built.
 
 **What is carrying it instead.** `volunteer_home_screen.dart` polls
 `GET /api/requests/nearby` every 15s while the app is open, and again on
@@ -158,6 +169,13 @@ logs **zero** failures — it looks completely healthy.
 badge. That covers the app-in-foreground case only. Backgrounded, killed, or
 never-opened, the volunteer finds out by opening the app. The poll interval is
 injected as `VolunteerHomeScreen.pollInterval` so tests can disable it.
+
+**This is the only delivery channel, and it scales with the fan-out.** Every
+created request is offered to every on-duty volunteer in range (§4), so this
+poll is what carries the request to all of them. That is fine while the app is
+foregrounded, but it means the number of phones that learn about a request grows
+with the volunteer base while the number that actually hear about it stays
+capped at whoever happens to have the app open.
 
 **Why the dependency was not just added.** The FlutterFire Gradle plugin
 requires `google-services.json` at build time; without it the Android build
@@ -197,9 +215,8 @@ within a second or two, and tapping it opens that request.
 ## 4. Must fix — dispatch radius runs on coordinates typed at registration
 
 **Today.** `MATCH_RADIUS_M=5000` in `backend/.env`, and urgent requests double
-it (`src/modules/matching/matching.service.ts:106`). A volunteer is only a
-candidate if **all** of these hold
-(`backend/src/modules/matching/matching.service.ts:56-72`):
+it (`src/modules/matching/matching.service.ts`). A volunteer is only a candidate
+if **all** of these hold:
 
 - `users.is_active = true`
 - `user_verifications.status = 'APPROVED'`
@@ -207,6 +224,24 @@ candidate if **all** of these hold
 - no `ACCEPTED`/`IN_PROGRESS` assignment already
 - within the radius of the request, measured against
   `COALESCE(current_*, base_*)`
+
+**Every created request is offered to every available volunteer in range.** This
+was briefly changed to a single-target "nearest volunteer only" design on
+2026-09-27 and then deliberately reverted the same day; fan-out is the intended
+behaviour. Two notes so the decision is not relitigated by accident:
+
+- `DISPATCH_BATCH_SIZE` was raised from 5 to **100** so the count cap does not
+  quietly contradict the intent. The real bound on who hears about a request is
+  `MATCH_RADIUS_M`, not the batch size — every eligible volunteer inside the
+  radius is offered it, nearest first, and the first to accept takes it. The
+  count is only a safety valve against a pathological blast if the radius ever
+  covers a dense area. **This number is a placeholder and is expected to be
+  tuned later**; if you change it, keep it high enough that the fan-out is real.
+- The consequence to remember: a request is pushed at every on-duty volunteer
+  within `MATCH_RADIUS_M`, so a *wrong* distance calculation does not merely
+  reorder the list — it decides which phones ring. With coordinates typed at
+  registration, "nearest" is a guess, and the guess is now load-bearing for
+  everyone who gets notified rather than for one person.
 
 **Two traps, both silent.**
 
@@ -223,16 +258,29 @@ candidate if **all** of these hold
   6 km away is simply invisible, with no explanation to anyone.
 
 **Why it is worse than "nobody was told".** `markDispatched` sets the request to
-`DISPATCHED` **with an empty batch** when there are no candidates
-(`backend/src/modules/matching/matching.service.ts:100-127`). Since `/nearby` requires membership in
-`dispatch_batch`, such a request can never be seen by anyone. The senior's app
-shows it as dispatched and waiting, the sweep retries on the same empty
-radius every `DISPATCH_TIMEOUT_S`, and after `MAX_DISPATCH_ATTEMPTS=3` it lands
-in `UNASSIGNED` — which is terminal and has no police recovery path (§5). So the
-worst case is roughly four and a half minutes of a senior believing help is on
-the way, ending in a state nobody can act on. The create response does return
-`dispatched_to`, so an empty array is detectable, but nothing surfaces it to the
-senior today.
+`DISPATCHED` **with an empty batch** when there are no candidates. Since
+`/nearby` requires membership in `dispatch_batch`, such a request can never be
+seen by anyone. The senior's app shows it as dispatched and waiting, the sweep
+retries on the same empty radius every `DISPATCH_TIMEOUT_S`, and after
+`MAX_DISPATCH_ATTEMPTS=3` it lands in `UNASSIGNED` — which is terminal and has no
+police recovery path (§5). So the worst case is roughly four and a half minutes
+of a senior believing help is on the way, ending in a state nobody can act on.
+The create response does return `dispatched_to`, so an empty array is
+detectable, but nothing surfaces it to the senior today.
+
+*Partly fixed.* The recovery sweep passes `onlyIfCandidate`, so an `UNASSIGNED`
+request is no longer rewritten to `DISPATCHED` before anyone is available — it
+stays put and is retried silently. This was a real bug: a senior saw "help is on
+the way" on a request nobody had been notified about. It does not fix the
+underlying problem, because a request *created* where nobody is eligible is still
+marked `DISPATCHED` and still invisible.
+
+**Also worth knowing: `dispatch_batch` is not an authorisation check.** It
+controls who *sees* a request in `/nearby` (Q-04), and it is what the accept and
+decline paths read, but `acceptRequest` itself only checks
+`status = 'DISPATCHED'` (`requests.service.ts:283`). Any on-duty volunteer who
+learns a request id can accept it, even one it was never offered. Under fan-out
+this matters less, since everyone in range is offered it anyway.
 
 **Diagnose a specific volunteer with:**
 
@@ -251,7 +299,8 @@ where u.role = 'volunteer';
 
 All three must be non-default — `is_active`, `APPROVED`, `is_available` — and
 the base coordinates must be within `MATCH_RADIUS_M` of the request. Then
-compare against what the dispatcher actually chose:
+compare against who actually got it. `dispatch_batch` is cumulative, so it is
+the full list of everyone the request was ever offered to:
 
 ```sql
 select hr.id, hr.status, hr.priority, hr.dispatch_attempt,
@@ -261,11 +310,23 @@ where hr.dispatch_batch = '[]'::jsonb
 order by hr.created_at desc;
 ```
 
-Anything listed there was dispatched to nobody.
+Anything listed there was dispatched to nobody. To see who a live request is
+waiting on, nearest first:
+
+```sql
+select hr.id, hr.status, hr.dispatch_attempt,
+       e->>'id'          as offered_to,
+       e->>'distance_m'  as metres
+from help_requests hr,
+     lateral jsonb_array_elements(hr.dispatch_batch) e
+where hr.status = 'DISPATCHED'
+order by (e->>'distance_m')::numeric;
+```
 
 **Fix.**
 
-1. Real positions first — see §2. Everything else here depends on it.
+1. Real positions first — see §2. Everything else here depends on it, and under
+   a real fan-out it decides which phones ring.
 2. Until then, police hand-assignment (P-05) is the only reliable path, and it
    bypasses the radius entirely. Make that the documented manual procedure.
 3. Decide the no-candidates product rule, which §2.4 also raises: tell the
@@ -274,8 +335,13 @@ Anything listed there was dispatched to nobody.
 4. Do not mark a request `DISPATCHED` on an empty batch — or at least carry an
    explicit `awaiting_volunteer` state, so "nobody available" stops looking
    identical to "help is on the way".
-5. Reconsider whether `MATCH_RADIUS_M=5000` is even right, given §2: a radius
-   computed from guessed coordinates is a confident wrong answer.
+5. Decide what a *decline* means. Today `declineRequest` leaves the request in
+   `DISPATCHED` for the rest of the batch to pick up, which is correct under
+   fan-out — but nothing re-offers it to the declining volunteer's side of the
+   radius, so a request that every nearby volunteer declines simply times out.
+6. Reconsider whether `MATCH_RADIUS_M=5000` is even right, given §2: a radius
+   computed from guessed coordinates decides who gets told, so a wrong radius is
+   a wrong answer for everybody in it.
 
 **Done when.** A request created where no eligible volunteer exists says so
 promptly and lands somewhere a human can act, instead of timing out into
@@ -328,6 +394,11 @@ promptly and lands somewhere a human can act, instead of timing out into
 - [ ] `web` bundle contains no `123456`; hint gated on `import.meta.env.DEV`
 - [ ] Real OTP provider wired; `OTP_DEV_CODE` out of the deployed env
 - [ ] `REQUESTS_DRY_RUN` explicitly `false` **only** in production
+- [ ] `DISPATCH_BATCH_SIZE` settled for real traffic — it is a placeholder at
+      100 and is only a safety valve, not the intended limit. The intent is that
+      every available volunteer in `MATCH_RADIUS_M` is offered each request, so
+      do not lower it to something small without deciding that is the product
+      (§4)
 - [ ] Volunteer coordinates are real and fresh, or the no-distance UI is kept
       deliberately and this file's §2 is still open
 - [ ] `UNASSIGNED` has a police recovery path

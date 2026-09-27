@@ -16,13 +16,32 @@ export interface DispatchResult {
 }
 
 /**
- * Candidate selection (BR-02, BR-05) + Haversine distance in SQL with a
- * bounding-box prefilter. Location = fresh `current_*` (< 10 min) else
- * `base_*`, via COALESCE. Urgent doubles the radius.
+ * Every available volunteer for a request (BR-02, BR-05), nearest first.
+ *
+ * Haversine distance is computed in SQL behind a bounding-box prefilter.
+ * Location = fresh `current_*` (< 10 min) else `base_*`, via COALESCE. Urgent
+ * doubles the radius.
+ *
+ * This is a fan-out on purpose: every eligible volunteer in range is offered the
+ * request, and the first to accept takes it. The real bound on how many people
+ * hear about a request is the radius, not a count — `DISPATCH_BATCH_SIZE` is only
+ * a safety valve against a pathological blast, and defaults high enough that a
+ * request in any realistic deployment reaches everyone who can actually help.
+ *
+ * Eligibility is unchanged, and is the whole safety of this function: an active
+ * user, an APPROVED verification, currently on duty, not already mid-job, and
+ * inside the radius.
  */
 export async function findCandidates(
   db: Queryable,
-  opts: { latitude: number; longitude: number; radiusM: number; category: string; limit: number; excludeIds?: string[] },
+  opts: {
+    latitude: number
+    longitude: number
+    radiusM: number
+    category: string
+    limit: number
+    excludeIds?: string[]
+  },
 ): Promise<Candidate[]> {
   const radius = Math.max(opts.radiusM, 100)
 
@@ -93,22 +112,31 @@ export async function findCandidates(
 }
 
 /**
- * Marks a request DISPATCHED and records the batch entries (id + position
- * snapshot + distance). Caller commits; the returned candidates fuel the
- * post-commit FCM fan-out.
+ * Marks a request DISPATCHED and records the batch of volunteers it was offered
+ * to. Caller commits; the returned candidates fuel the post-commit notification
+ * fan-out.
+ *
+ * `dispatch_batch` stays a JSONB array because it is load-bearing well beyond
+ * this module: Q-04 (`/nearby`) gates on membership, accept and decline check
+ * it, and the police directory reads it for assignment history.
  *
  * The batch is CUMULATIVE. Q-04 gates on membership, so overwriting it with
  * only the newly-found candidates would silently un-offer the request to
  * everyone who was already notified. `excludeIds` therefore only controls who
  * gets a *fresh notification* on a retry; it never removes anyone from the
- * batch. Re-dispatching with the previous batch excluded used to erase the
- * batch on the first sweep and leave the request with nobody able to accept it.
+ * batch. Re-dispatching with the previous batch excluded used to erase the batch
+ * on the first sweep and leave the request with nobody able to accept it.
+ *
+ * `onlyIfCandidate` is for the recovery sweep, which is polling rather than
+ * dispatching: with it set, finding nobody leaves the row untouched. Without it
+ * an `UNASSIGNED` request would be rewritten to `DISPATCHED` before anyone was
+ * available, which reads as "help is on the way" when nobody was ever told.
  */
 export async function markDispatched(
   db: Queryable,
   request: { id: string; category: string; latitude: number; longitude: number; priority: 'normal' | 'urgent' },
   attempt: number,
-  opts: { excludeIds?: string[] } = {},
+  opts: { excludeIds?: string[]; onlyIfCandidate?: boolean } = {},
 ): Promise<DispatchResult> {
   const radius = request.priority === 'urgent' ? config.matching.radiusM * 2 : config.matching.radiusM
   const candidates = await findCandidates(db, {
@@ -119,6 +147,10 @@ export async function markDispatched(
     limit: config.matching.batchSize,
     excludeIds: opts.excludeIds,
   })
+
+  if (candidates.length === 0 && opts.onlyIfCandidate) {
+    return { candidates, dispatched: false }
+  }
 
   const prior = await db.query(
     'SELECT dispatch_batch FROM help_requests WHERE id = $1',

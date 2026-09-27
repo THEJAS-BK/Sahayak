@@ -199,6 +199,51 @@ describe('emergency events & audit', () => {
     expect((nearby.body.data.requests as Array<{ id: string }>).map((r) => r.id)).toContain(requestId)
   })
 
+  it('BG-01: a redispatch adds newly available volunteers to the batch without dropping the old ones', async () => {
+    const senior = await createApprovedSenior()
+    const near = await createApprovedVolunteer({ base_latitude: 12.9716, base_longitude: 77.5946 })
+    const far = await createApprovedVolunteer({ base_latitude: 12.9722, base_longitude: 77.5952 })
+    const created = await app()
+      .post('/api/requests')
+      .set('Authorization', authHeader(senior))
+      .send({ category: 'medical_help', description: 'x', latitude: 12.9716, longitude: 77.5946, source: 'flutter_app' })
+    const requestId = created.body.data.request_id
+
+    // Fan-out: everybody on duty and in range is offered it, nearest first.
+    expect(created.body.data.dispatched_to).toEqual([near.id, far.id])
+
+    const batchIds = async () => {
+      const row = await pool.query('SELECT dispatch_batch FROM help_requests WHERE id = $1', [requestId])
+      return (row.rows[0].dispatch_batch as Array<{ id: string }>).map((e) => e.id)
+    }
+    expect(await batchIds()).toEqual([near.id, far.id])
+
+    // Nobody accepted in time. The sweep excludes everyone already notified, so
+    // it finds nobody new — and must leave the batch alone rather than blanking
+    // it, or both volunteers lose the request entirely.
+    await pool.query("UPDATE help_requests SET dispatched_at = now() - interval '2 minutes' WHERE id = $1", [requestId])
+    let outcome = await runDispatchSweep()
+    expect(outcome.redispatched).toBe(1)
+    expect(outcome.newBatches).toEqual([])
+    expect(await batchIds()).toEqual([near.id, far.id])
+
+    // A third volunteer comes on duty. The next sweep finds them, and appends
+    // them to the batch — the two already offered it are still offered it.
+    const latecomer = await createApprovedVolunteer({ base_latitude: 12.9725, base_longitude: 77.5955 })
+    await pool.query("UPDATE help_requests SET dispatched_at = now() - interval '2 minutes' WHERE id = $1", [requestId])
+    outcome = await runDispatchSweep()
+    expect(outcome.newBatches).toEqual([
+      { requestId, category: 'medical_help', candidates: [{ id: latecomer.id, fcmToken: null }] },
+    ])
+    expect(await batchIds()).toEqual([near.id, far.id, latecomer.id])
+
+    // And the newcomer is the one who can now see it.
+    const nearby = await app()
+      .get('/api/requests/nearby?lat=12.9725&lng=77.5955&radius_m=5000')
+      .set('Authorization', authHeader(latecomer))
+    expect((nearby.body.data.requests as Array<{ id: string }>).map((r) => r.id)).toContain(requestId)
+  })
+
   it('BG-01: UNASSIGNED is not terminal — a volunteer coming on duty picks the request back up', async () => {
     const senior = await createApprovedSenior()
     const created = await app()

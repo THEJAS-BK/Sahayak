@@ -7,6 +7,7 @@ import requestsRoutes from '../modules/requests/requests.routes.js'
 import volunteersRoutes from '../modules/volunteers/volunteers.routes.js'
 import policeRequestsRoutes from '../modules/police/requests.routes.js'
 import policeVolunteersRoutes from '../modules/police/volunteers.routes.js'
+import policeSeniorsRoutes from '../modules/police/seniors.routes.js'
 import { emergencyRoutes, policeEmergencyRoutes } from '../modules/emergency/emergency.routes.js'
 import auditRoutes from '../modules/police/audit.routes.js'
 import voiceRoutes from '../modules/voice/voice.routes.js'
@@ -21,6 +22,7 @@ apiRouter.use('/requests', requestsRoutes)
 apiRouter.use('/volunteers', volunteersRoutes)
 apiRouter.use('/police/requests', policeRequestsRoutes)
 apiRouter.use('/police/volunteers', policeVolunteersRoutes)
+apiRouter.use('/police/seniors', policeSeniorsRoutes)
 apiRouter.use('/police/emergency-events', policeEmergencyRoutes)
 apiRouter.use('/emergency-events', emergencyRoutes)
 apiRouter.use('/audit-logs', auditRoutes)

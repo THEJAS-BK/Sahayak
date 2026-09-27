@@ -79,3 +79,19 @@ export async function updateFcmToken(db: Queryable, userId: string, fcmToken: st
   })
   return fcmToken
 }
+
+/**
+ * Device tokens for every active police account that has opted in.
+ *
+ * The police desk is a browser (the web portal registers its own FCM token via
+ * `PATCH /api/me/fcm-token`), so there is no single hardcoded token to push to —
+ * one row per signed-in, permission-granted browser. DISTINCT because several
+ * officers can share a machine, and a revoked token can linger on a stale row.
+ */
+export async function listPoliceFcmTokens(db: Queryable): Promise<string[]> {
+  const res = await db.query(
+    `SELECT DISTINCT fcm_token FROM users
+      WHERE role = 'police' AND is_active = true AND fcm_token IS NOT NULL`,
+  )
+  return res.rows.map((r) => r.fcm_token as string).filter(Boolean)
+}

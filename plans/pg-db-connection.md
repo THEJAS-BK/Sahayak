@@ -1,93 +1,76 @@
 # Connecting to PostgreSQL
 
-Last verified: 2026-09-26
+Last verified: 2026-09-27
 
-## The one thing to get right
+## Where the database lives
 
-Since 2026-09-26 the backend uses **port 5432**, the PostgreSQL 18 server
-registered in pgAdmin as `postgres`, with the databases owned by the `postgres`
-superuser.
+One **shared Neon Postgres**. Everyone — every teammate, and the demo — points
+at the same database. There is no local Postgres instance any more.
+
+Get the connection string from the Neon dashboard. Use the **pooled** endpoint
+(the hostname containing `-pooler`); it is the right one for a server that holds
+a handful of connections and uses transactions properly. The direct endpoint is
+only needed for operations a transaction pool cannot perform.
 
 ```env
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/sahayak        # in backend/.env
-DATABASE_URL_TEST=postgres://postgres:postgres@localhost:5432/sahayak_test
+DATABASE_URL=postgresql://USER:PASSWORD@ep-xxx-pooler.REGION.aws.neon.tech/neondb?sslmode=require
 ```
 
-**Connect a GUI to 5432** — that is where the live data is.
+Connect a GUI (pgAdmin, DBeaver, TablePlus) with the same string.
 
-The earlier 5432 attempt (2026-09-18) was abandoned mid-way and left fabricated
-seeder rows behind. That database has since been dropped and rebuilt from
-migrations, so those personas (`anitha.dev@example.com` and friends) are gone
-for good. If you ever see them, you are looking at a different instance.
+## The test database is a different database
 
-## The other server on this machine (5433)
+`DATABASE_URL_TEST` must point at a **separate** database — a Neon test branch,
+created in the Neon console.
 
-A second, rootless cluster still exists on port 5433 (data dir
-`backend/.pgdata`, started by `backend/scripts/dev-db.sh`, role `sahayak`, no
-password). **Nothing points at it any more.** It is kept only as a fallback, so
-reverting is a two-line change in `backend/.env` plus `npm run db:start`. Do not
-run migrations against both at once and be surprised by divergent data.
+```env
+DATABASE_URL_TEST=postgresql://USER:PASSWORD@ep-yyy-pooler.REGION.aws.neon.tech/neondb?sslmode=require
+```
 
-## If you see fabricated data, you are on the wrong port
+This is not a formality. Tests truncate every table, so pointing
+`DATABASE_URL_TEST` at the shared database would delete the seeded police
+account and every teammate's work on the next `npm test`. The backend now
+refuses to start if the two URLs resolve to the same database, and there is no
+longer any fallback from one to the other.
 
-There is a **second, unrelated PostgreSQL server on port 5432** (the pgAdmin /
-distro install, user `postgres`, password `postgres`). Nothing in the running
-stack points at it. Its `sahayak` database still holds the personas from the
-original fake-data seeder — `anitha.dev@example.com`, `ganesh.rao@example.com`,
-`divya.poojary@example.com` and friends, 16 users / 13 requests / 17 audit rows
-as of 2026-09-26.
+Tests do not create or drop the test database. A transaction pool (which is what
+the pooled endpoint is) cannot run `CREATE DATABASE` or `DROP DATABASE` at all,
+and Neon has no `postgres` maintenance database to connect to in order to try.
+So the test database is provisioned once and every run is migrations plus a
+truncate — which is what the tests already did for isolation.
 
-Those rows are **not** what the app reads. They are a leftover from before the
-seeder was replaced, left behind by the abandoned move to pgAdmin documented
-below. Seeing them means your client is pointed at 5432.
+## Destructive commands are refused
 
-Check which one you are on:
+`npm run db:reset` (`DROP SCHEMA public CASCADE`) and `npm run db:seed:fresh`
+(truncate everything) are refused by default, because on a single shared
+database they destroy other people's work irreversibly. Force them only when you
+are certain the data is disposable:
 
 ```bash
-export PATH=/usr/pgsql-18/bin:$PATH PGPASSWORD=postgres
-
-# Should contain police@gmail.com and nothing else.
-psql -h 127.0.0.1 -p 5432 -U postgres -d sahayak -c \
-  "SELECT email, role FROM users ORDER BY email;"
-
-# Should be 0 in a freshly seeded database.
-psql -h 127.0.0.1 -p 5432 -U postgres -d sahayak -c \
-  "SELECT count(*) FROM help_requests;"
+SAHAYAK_ALLOW_DESTRUCTIVE=1 npm run db:reset
 ```
 
-A correctly seeded dev database contains exactly one row in `users`
-(`police@gmail.com`) and nothing in any business table — seniors and
-volunteers only appear once a person registers through the real UI and an
-officer approves them. See `backend/scripts/seed.ts`.
+## What every teammate needs in `.env`
 
-## Migrations and seed
+Distribute this as a complete file, so nobody has to guess. These fields must be
+**byte-identical on every machine**:
 
-```bash
-cd backend
-npm run db:migrate                 # 10 migrations
-npm run db:seed                    # police account only; refuses if data exists
-npm run db:seed:fresh              # wipe business tables, then bootstrap police
-```
-
-`POLICE_BOOTSTRAP_EMAIL` in `backend/.env` decides which account is created.
-
-## Tests use a different database
-
-`vitest.config.ts` points both `DATABASE_URL` and `DATABASE_URL_TEST` at
-`sahayak_test` on the same server, so running the suite never touches dev data:
-
-```bash
-npm test                           # 68 tests, all against sahayak_test
-```
-
-## Connecting a GUI
-
-| | |
+| Variable | Why it must match |
 |---|---|
-| Host | `localhost` |
-| Port | **5432** |
-| User | `postgres` |
-| Password | `postgres` |
-| Database | `sahayak` (dev) or `sahayak_test` (tests) |
+| `DATABASE_URL` | the shared database |
+| `JWT_SECRET` | sessions are signed with it — a mismatch means one machine rejecting another's tokens, with no obvious cause |
+| `OTP_DEV_CODE` | otherwise everyone's dev OTP differs |
+| `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | the backend that mints join tokens must match the LiveKit instance |
 
----
+These are per-machine and can differ: `PORT`, `CORS_ORIGIN`, and the path in
+`FIREBASE_SERVICE_ACCOUNT_JSON` (send the key file separately).
+
+`DATABASE_URL_TEST` should also be the same test branch for everyone — it holds
+no real data.
+
+## Earlier local instances
+
+The local clusters on `:5432` and `:5433` are gone, along with
+`backend/scripts/dev-db.sh` and the repo's `docker-compose.yml`. History of that
+setup, including the abandoned first attempt and the fabricated seeder rows it
+left behind, is in git history if it is ever needed.

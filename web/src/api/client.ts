@@ -2,10 +2,14 @@ import type {
   AssignableVolunteerListResult,
   AuditLogListResult,
   CurrentUser,
+  EmergencyListResult,
   PoliceAssignmentResult,
   PoliceRequest,
   RequestListResult,
+  SeniorDetail,
+  SeniorListResult,
   VerificationListResult,
+  VolunteerDetail,
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api';
@@ -193,6 +197,70 @@ export function reviewVerification(
   return request(`/verifications/${id}`, { method: 'PATCH', body: { status } });
 }
 
-export function fetchAuditLogs(limit = 10): Promise<AuditLogListResult> {
-  return request(`/audit-logs?limit=${limit}`);
+/**
+ * P-02: recent activity. Takes a filter object rather than a bare limit so the
+ * dedicated Audit Logs page can reuse this instead of adding a second call shape.
+ */
+export interface AuditLogQuery {
+  entity_type?: string;
+  entity_id?: string;
+  /** Pass the string 'null' to select system-generated entries, per P-02. */
+  actor_id?: string;
+  action?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export function fetchAuditLogs(query: AuditLogQuery = {}): Promise<AuditLogListResult> {
+  return request(`/audit-logs?${new URLSearchParams(query as Record<string, string>).toString()}`);
+}
+
+/** E-02: the police SOS feed. */
+export interface EmergencyQuery {
+  status?: 'LOGGED' | 'REVIEWED';
+  senior_id?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export function fetchEmergencyEvents(
+  query: EmergencyQuery = {},
+): Promise<EmergencyListResult> {
+  return request(`/police/emergency-events?${new URLSearchParams(query as Record<string, string>).toString()}`);
+}
+
+/** E-03: LOGGED → REVIEWED. */
+export function reviewEmergencyEvent(
+  id: string,
+): Promise<{ event: { event_id: string; status: 'REVIEWED' } }> {
+  return request(`/police/emergency-events/${id}`, {
+    method: 'PATCH',
+    body: { status: 'REVIEWED' },
+  });
+}
+
+/** P-06: the senior directory. */
+export interface SeniorQuery {
+  search?: string;
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'NONE';
+  limit?: number;
+  cursor?: string;
+}
+
+export function fetchSeniors(query: SeniorQuery = {}): Promise<SeniorListResult> {
+  return request(`/police/seniors?${new URLSearchParams(query as Record<string, string>).toString()}`);
+}
+
+/** P-07: one senior with verification, request and emergency history. */
+export function fetchSenior(id: string): Promise<{ senior: SeniorDetail }> {
+  return request(`/police/seniors/${id}`);
+}
+
+/** P-05b: one volunteer with assignment history. */
+export function fetchVolunteer(id: string): Promise<{ volunteer: VolunteerDetail }> {
+  return request(`/police/volunteers/${id}`);
 }

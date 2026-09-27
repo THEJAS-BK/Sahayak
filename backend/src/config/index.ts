@@ -37,11 +37,12 @@ const rawEnv = z
     PORT: intFromEnv(3000),
     DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
     DATABASE_URL_TEST: z.string().optional(),
+    PG_POOL_MAX: intFromEnv(10),
     JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
     JWT_ACCESS_TTL: z.string().regex(DURATION_RE, 'Must look like 15m / 8h / 90d').default('15m'),
     JWT_REFRESH_TTL: z.string().regex(DURATION_RE, 'Must look like 15m / 8h / 90d').default('90d'),
     MATCH_RADIUS_M: intFromEnv(5000),
-    DISPATCH_BATCH_SIZE: intFromEnv(5),
+    DISPATCH_BATCH_SIZE: intFromEnv(100),
     DISPATCH_TIMEOUT_S: intFromEnv(90),
     MAX_DISPATCH_ATTEMPTS: intFromEnv(3),
     REQUESTS_DRY_RUN: emptyToUndefined,
@@ -52,7 +53,6 @@ const rawEnv = z
     SMTP_PASS: emptyToUndefined,
     SMTP_FROM: emptyToUndefined,
     SMTP_SECURE: emptyToUndefined,
-    FCM_SERVICE_ACCOUNT_JSON: emptyToUndefined,
     OTP_DEV_CODE: emptyToUndefined,
     LIVEKIT_URL: emptyToUndefined,
     LIVEKIT_API_KEY: emptyToUndefined,
@@ -62,14 +62,9 @@ const rawEnv = z
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== 'production') return
-    const required = [
-      'SMTP_HOST',
-      'SMTP_PORT',
-      'SMTP_USER',
-      'SMTP_PASS',
-      'SMTP_FROM',
-      'FCM_SERVICE_ACCOUNT_JSON',
-    ] as const
+    // SMTP is required in production because email is the notification path
+    // that ships. Push is not implemented, so it gates nothing.
+    const required = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM'] as const
     for (const key of required) {
       if (env[key] === undefined) {
         ctx.addIssue({ code: 'custom', path: [key], message: `${key} is required when NODE_ENV=production` })
@@ -138,10 +133,9 @@ export const config = {
           secure: env.SMTP_SECURE === 'true' || env.SMTP_SECURE === '1',
         }
       : null,
-  fcmServiceAccountPathOrJson:
-    typeof env.FCM_SERVICE_ACCOUNT_JSON === 'string' && env.FCM_SERVICE_ACCOUNT_JSON.length > 0
-      ? env.FCM_SERVICE_ACCOUNT_JSON
-      : null,
+  pool: {
+    max: env.PG_POOL_MAX,
+  },
   otpDevCode: typeof env.OTP_DEV_CODE === 'string' ? env.OTP_DEV_CODE : null,
   livekit: {
     url: typeof env.LIVEKIT_URL === 'string' ? env.LIVEKIT_URL : '',

@@ -95,7 +95,7 @@ export async function createRequest(
 
   const { candidates } = await markDispatched(
     db,
-    { id: request.id, category: input.category, latitude: numeric(request.latitude), longitude: numeric(request.longitude), priority: input.priority },
+    { id: request.id, category: input.category, latitude: numeric(input.latitude), longitude: numeric(input.longitude), priority: input.priority },
     0,
   )
 

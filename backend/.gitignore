@@ -11,6 +11,11 @@ build/
 .env.*
 !.env.example
 
+# Firebase service-account key. This is a private key and must never be
+# committed; point FCM_SERVICE_ACCOUNT_JSON at it locally.
+secrets/
+*service-account*.json
+
 # Logs
 logs/
 *.log
