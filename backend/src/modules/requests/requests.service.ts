@@ -93,9 +93,9 @@ export async function createRequest(
     },
   })
 
-  const { candidates } = await markDispatched(
+  const { candidate } = await markDispatched(
     db,
-    { id: request.id, category: input.category, latitude: numeric(request.latitude), longitude: numeric(request.longitude), priority: input.priority },
+    { id: request.id, category: input.category, latitude: numeric(input.latitude), longitude: numeric(input.longitude), priority: input.priority },
     0,
   )
 
@@ -107,11 +107,11 @@ export async function createRequest(
     after: {
       status: 'DISPATCHED',
       dispatch_attempt: 0,
-      dispatch_batch: candidates.map((c) => c.id),
+      dispatch_batch: candidate ? [candidate.id] : [],
     },
   })
 
-  const dispatchedTo = candidates.map((c) => c.id)
+  const dispatchedTo = candidate ? [candidate.id] : []
 
   if (dispatchedTo.length === 0) {
     logger.warn(

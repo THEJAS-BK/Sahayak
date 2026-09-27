@@ -199,6 +199,41 @@ describe('emergency events & audit', () => {
     expect((nearby.body.data.requests as Array<{ id: string }>).map((r) => r.id)).toContain(requestId)
   })
 
+  it('BG-01: a redispatch moves the request on to the next volunteer, replacing the batch', async () => {
+    const senior = await createApprovedSenior()
+    const near = await createApprovedVolunteer({ base_latitude: 12.9716, base_longitude: 77.5946 })
+    const far = await createApprovedVolunteer({ base_latitude: 12.9722, base_longitude: 77.5952 })
+    const created = await app()
+      .post('/api/requests')
+      .set('Authorization', authHeader(senior))
+      .send({ category: 'medical_help', description: 'x', latitude: 12.9716, longitude: 77.5946, source: 'flutter_app' })
+    const requestId = created.body.data.request_id
+
+    // The nearer volunteer is offered it first.
+    expect(created.body.data.dispatched_to).toEqual([near.id])
+
+    // Nobody accepted in time, so the sweep re-offers to somebody else. The
+    // previous target is excluded from the search so the same phone is not
+    // pinged again, which means the batch is replaced rather than merged.
+    await pool.query("UPDATE help_requests SET dispatched_at = now() - interval '2 minutes' WHERE id = $1", [requestId])
+    const outcome = await runDispatchSweep()
+    expect(outcome.redispatched).toBe(1)
+    expect(outcome.newBatches).toEqual([
+      { requestId, category: 'medical_help', candidates: [{ id: far.id, fcmToken: null }] },
+    ])
+
+    const row = await pool.query('SELECT status, dispatch_batch FROM help_requests WHERE id = $1', [requestId])
+    expect(row.rows[0].status).toBe('DISPATCHED')
+    const ids = (row.rows[0].dispatch_batch as Array<{ id: string }>).map((e) => e.id)
+    expect(ids).toEqual([far.id])
+
+    // The new volunteer is the one who can now see it.
+    const nearby = await app()
+      .get('/api/requests/nearby?lat=12.9716&lng=77.5946&radius_m=5000')
+      .set('Authorization', authHeader(far))
+    expect((nearby.body.data.requests as Array<{ id: string }>).map((r) => r.id)).toContain(requestId)
+  })
+
   it('BG-01: UNASSIGNED is not terminal — a volunteer coming on duty picks the request back up', async () => {
     const senior = await createApprovedSenior()
     const created = await app()

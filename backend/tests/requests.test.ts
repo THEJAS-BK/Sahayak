@@ -30,7 +30,7 @@ describe('help requests flow', () => {
     await resetDb()
   })
 
-  it('Q-01: senior creates a request; matching dispatches to nearby available volunteers', async () => {
+  it('Q-01: senior creates a request; matching offers it to the single nearest available volunteer', async () => {
     const senior = await createApprovedSenior()
     const vol1 = await createApprovedVolunteer({ base_latitude: 12.972, base_longitude: 77.595, skills: ['medical_help'] })
     const vol2 = await createApprovedVolunteer({ base_latitude: 12.971, base_longitude: 77.594 })
@@ -42,15 +42,18 @@ describe('help requests flow', () => {
     expect(res.body.data.status).toBe('DISPATCHED')
     expect(res.body.data.notified).toBe(true)
     expect(res.body.data.request_id).toBeTruthy()
-    // Both volunteers within radius → both dispatched.
-    expect(res.body.data.dispatched_to).toEqual(expect.arrayContaining([vol1.id, vol2.id]))
+    // Two volunteers in range, but the request goes to exactly one of them:
+    // vol1 is the nearer of the two (~62 m vs ~93 m) and also carries the
+    // matching medical_help skill, so only its phone gets told.
+    expect(res.body.data.dispatched_to).toEqual([vol1.id])
+    expect(res.body.data.dispatched_to).not.toContain(vol2.id)
 
     const row = await pool.query('SELECT status, dispatch_batch FROM help_requests WHERE id = $1', [
       res.body.data.request_id,
     ])
     expect(row.rows[0].status).toBe('DISPATCHED')
     const batchIds = (row.rows[0].dispatch_batch as Array<{ id: string }>).map((e) => e.id)
-    expect(batchIds).toEqual(expect.arrayContaining([vol1.id, vol2.id]))
+    expect(batchIds).toEqual([vol1.id])
   })
 
   it('Q-01: senior with an open request gets 409 (BR-13)', async () => {
@@ -264,27 +267,39 @@ describe('help requests flow', () => {
     expect(row.rows[0].location_updated_at).toBeTruthy()
   })
 
-  it('L-02: volunteer can toggle availability; unavailable volunteers are not matched', async () => {
+  it('L-02: volunteer can toggle availability; only on-duty volunteers are matched', async () => {
     const senior = await createApprovedSenior()
-    const unavailableVol = await createApprovedVolunteer({ base_latitude: 12.9716, base_longitude: 77.5946, is_available: false })
-    const availableVol = await createApprovedVolunteer({ base_latitude: 12.9722, base_longitude: 77.5952, is_available: true })
+    const offDuty = await createApprovedVolunteer({ base_latitude: 12.9716, base_longitude: 77.5946, is_available: false })
+    const onDuty = await createApprovedVolunteer({ base_latitude: 12.9722, base_longitude: 77.5952, is_available: true })
 
+    // offDuty sits exactly on the request location but is still off duty, so
+    // the nearer of the two is onDuty. An off-duty volunteer is never a
+    // candidate, however close they are.
+    const first = await createRequestFor(senior)
+    expect(first.body.data.dispatched_to).toEqual([onDuty.id])
+
+    // Going on duty makes the volunteer at the request location eligible, and
+    // being nearest they are the one offered the next request.
     const toggle = await app()
       .patch('/api/volunteers/me/availability')
-      .set('Authorization', authHeader(unavailableVol))
+      .set('Authorization', authHeader(offDuty))
       .send({ is_available: true })
     expect(toggle.status).toBe(200)
 
-    const created = await createRequestFor(senior)
-    expect(created.body.data.dispatched_to).toContain(unavailableVol.id)
-    expect(created.body.data.dispatched_to).toContain(availableVol.id)
+    // BR-13 allows one open request per senior, so the second request needs its
+    // own senior.
+    const second = await createRequestFor(await createApprovedSenior(), {
+      ...REQUEST_BODY,
+      description: 'second request',
+    })
+    expect(second.body.data.dispatched_to).toEqual([offDuty.id])
 
     const off = await app()
       .patch('/api/volunteers/me/availability')
-      .set('Authorization', authHeader(availableVol))
+      .set('Authorization', authHeader(onDuty))
       .send({ is_available: false })
     expect(off.status).toBe(200)
-    const row = await pool.query('SELECT is_available FROM volunteer_profiles WHERE user_id = $1', [availableVol.id])
+    const row = await pool.query('SELECT is_available FROM volunteer_profiles WHERE user_id = $1', [onDuty.id])
     expect(row.rows[0].is_available).toBe(false)
   })
 

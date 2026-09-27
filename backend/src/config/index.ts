@@ -42,7 +42,6 @@ const rawEnv = z
     JWT_ACCESS_TTL: z.string().regex(DURATION_RE, 'Must look like 15m / 8h / 90d').default('15m'),
     JWT_REFRESH_TTL: z.string().regex(DURATION_RE, 'Must look like 15m / 8h / 90d').default('90d'),
     MATCH_RADIUS_M: intFromEnv(5000),
-    DISPATCH_BATCH_SIZE: intFromEnv(5),
     DISPATCH_TIMEOUT_S: intFromEnv(90),
     MAX_DISPATCH_ATTEMPTS: intFromEnv(3),
     REQUESTS_DRY_RUN: emptyToUndefined,
@@ -106,7 +105,6 @@ export const config = {
   },
   matching: {
     radiusM: env.MATCH_RADIUS_M,
-    batchSize: env.DISPATCH_BATCH_SIZE,
     timeoutS: env.DISPATCH_TIMEOUT_S,
     maxAttempts: env.MAX_DISPATCH_ATTEMPTS,
   },

@@ -2,7 +2,7 @@ import { config } from "../config/index.js";
 import { withTransaction } from "../database/pool.js";
 import { writeAudit } from "../database/audit.js";
 import { logger } from "../lib/logger.js";
-import { findCandidates, markDispatched } from "../modules/matching/matching.service.js";
+import { markDispatched } from "../modules/matching/matching.service.js";
 import { notifyDispatch } from "../modules/notifications/request.js";
 import { notifyPolice } from "../modules/notifications/police.js";
 import type { Queryable } from "../database/pool.js";
@@ -45,10 +45,10 @@ async function sweepOnce(db: Queryable, outcome: SweepOutcome): Promise<void> {
       : [];
 
     // An UNASSIGNED request goes back into circulation as soon as *anybody* is
-    // available, which includes the volunteers already sitting in its batch.
-    // Searching with the batch excluded — to avoid duplicate notifications —
-    // would find nobody here and leave the request stranded forever, because
-    // the only volunteer in range is the one we just excluded.
+    // available, which includes the volunteer it was already offered to. So the
+    // batch is deliberately NOT excluded here — the only person in range may be
+    // the one we notified last time, and excluding them would strand the request
+    // forever. markDispatched finds the single nearest volunteer and re-offers.
     if (row.status === 'UNASSIGNED') {
       const request = {
         id: requestId,
@@ -57,42 +57,29 @@ async function sweepOnce(db: Queryable, outcome: SweepOutcome): Promise<void> {
         longitude: Number(row.longitude),
         priority: row.priority as "normal" | "urgent",
       };
-      const radius =
-        row.priority === 'urgent' ? config.matching.radiusM * 2 : config.matching.radiusM;
-      const available = await findCandidates(db, {
-        latitude: request.latitude,
-        longitude: request.longitude,
-        radiusM: radius,
-        category: request.category,
-        limit: config.matching.batchSize,
-      });
-      if (available.length === 0) {
-        // Nobody yet. Leave it UNASSIGNED so the sweep keeps retrying, without
-        // burning an attempt or re-alerting the police every 30 seconds.
-        continue;
-      }
-
       // Reset the attempt counter. The request is starting a genuinely new
       // chance, and keeping the exhausted count would make the very next sweep
       // see `attempt >= maxAttempts` and flip it straight back to UNASSIGNED —
       // recovery and exhaustion would fight each other every 30 seconds.
-      await markDispatched(db, request, 0);
+      const { candidate, dispatched } = await markDispatched(db, request, 0, { onlyIfCandidate: true });
+      if (!dispatched) {
+        // Nobody yet. Leave it UNASSIGNED so the sweep keeps retrying, without
+        // burning an attempt or re-alerting the police every 30 seconds.
+        continue;
+      }
       outcome.recovered += 1;
-      // Only somebody who was not already in the batch needs telling. The
-      // others were notified when the request was first dispatched.
-      const fresh = available.filter((c) => !priorIds.includes(c.id));
-      if (fresh.length > 0) {
+      if (candidate) {
         outcome.newBatches.push({
           requestId,
           category: row.category,
-          candidates: fresh.map((c) => ({ id: c.id, fcmToken: c.fcmToken })),
+          candidates: [{ id: candidate.id, fcmToken: candidate.fcmToken }],
         });
       }
       continue;
     }
 
     if (attempt < maxAttempts) {
-      const { candidates } = await markDispatched(
+      const { candidate } = await markDispatched(
         db,
         {
           id: requestId,
@@ -113,11 +100,16 @@ async function sweepOnce(db: Queryable, outcome: SweepOutcome): Promise<void> {
         after: { status: "DISPATCHED", dispatch_attempt: attempt + 1 },
       });
       outcome.redispatched += 1;
-      outcome.newBatches.push({
-        requestId,
-        category: row.category,
-        candidates: candidates.map((c) => ({ id: c.id, fcmToken: c.fcmToken })),
-      });
+      // No fresh volunteer means the batch was left as-is and nobody is
+      // re-notified: the volunteer already offered it can still accept, and
+      // re-pinging the same phone every 30s would just be noise.
+      if (candidate) {
+        outcome.newBatches.push({
+          requestId,
+          category: row.category,
+          candidates: [{ id: candidate.id, fcmToken: candidate.fcmToken }],
+        });
+      }
     } else {
       await db.query(
         `UPDATE help_requests SET status = 'UNASSIGNED' WHERE id = $1`,
