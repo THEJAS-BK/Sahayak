@@ -13,6 +13,12 @@ class SahayakAppBar extends StatelessWidget implements PreferredSizeWidget {
   final int notificationCount;
   final VoidCallback? onNotificationTap;
 
+  /// When set, the top-right avatar is tappable (e.g. senior profile).
+  final VoidCallback? onProfileTap;
+
+  /// Nested screens show a back arrow instead of the shield mark.
+  final bool showBack;
+
   const SahayakAppBar({
     super.key,
     this.subtitle,
@@ -20,6 +26,8 @@ class SahayakAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.extraActions,
     this.notificationCount = 0,
     this.onNotificationTap,
+    this.onProfileTap,
+    this.showBack = false,
   });
 
   @override
@@ -31,10 +39,16 @@ class SahayakAppBar extends StatelessWidget implements PreferredSizeWidget {
       backgroundColor: AppColors.navyDark,
       elevation: 0,
       titleSpacing: 12,
-      leading: const Padding(
-        padding: EdgeInsets.only(left: 12),
-        child: Icon(Icons.shield, color: AppColors.accentBlue, size: 28),
-      ),
+      leading: showBack
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                  color: Colors.white, size: 20),
+              onPressed: () => Navigator.of(context).maybePop(),
+            )
+          : const Padding(
+              padding: EdgeInsets.only(left: 12),
+              child: Icon(Icons.shield, color: AppColors.accentBlue, size: 28),
+            ),
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -98,17 +112,20 @@ class SahayakAppBar extends StatelessWidget implements PreferredSizeWidget {
                     ),
                 ],
               ),
-              const Padding(
-                padding: EdgeInsets.only(right: 12),
-                child: CircleAvatar(
-                  radius: 16,
-                  backgroundColor: AppColors.accentBlue,
-                  child: Text(
-                    'U',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: GestureDetector(
+                  onTap: onProfileTap,
+                  child: const CircleAvatar(
+                    radius: 16,
+                    backgroundColor: AppColors.accentBlue,
+                    child: Text(
+                      'U',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),

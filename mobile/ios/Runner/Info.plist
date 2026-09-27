@@ -6,6 +6,8 @@
 	<string>Sahayak uses your microphone to listen to your voice so you can talk to the AI assistant.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Sahayak uses on-device speech recognition to convert your voice into text for the AI assistant.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Sahayak lets you attach a photo to your help request conversation.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>

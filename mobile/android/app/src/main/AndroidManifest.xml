@@ -3,6 +3,9 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <!-- Network access for agent backend API calls -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Gallery access for chat image preview -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
     <application
         android:label="sahayak_mobile"
         android:name="${applicationName}"

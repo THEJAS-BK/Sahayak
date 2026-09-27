@@ -13,6 +13,8 @@ import '../widgets/status_badge.dart';
 import 'agent_conversation_screen.dart';
 import 'create_login_screen.dart';
 import 'my_requests_screen.dart';
+import 'senior_my_requests_screen.dart';
+import 'senior_profile_screen.dart';
 import 'senior_request_detail_screen.dart';
 
 class SeniorHomeScreen extends StatefulWidget {
@@ -155,7 +157,13 @@ class _SeniorHomeScreenState extends State<SeniorHomeScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.scaffold,
-      appBar: const SahayakAppBar(subtitle: 'Senior Citizen Portal'),
+      appBar: SahayakAppBar(
+        subtitle: 'Senior Citizen Portal',
+        onProfileTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SeniorProfileScreen()),
+        ),
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -350,6 +358,21 @@ class _SeniorHomeScreenState extends State<SeniorHomeScreen>
               ),
 
               const SizedBox(height: 20),
+
+              PrimaryButton(
+                label: 'View my requests',
+                outlined: true,
+                icon: Icons.list_alt_outlined,
+                color: AppColors.accentBlue,
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const SeniorMyRequestsScreen(),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 10),
 
               PrimaryButton(
                 label: 'Log out',
