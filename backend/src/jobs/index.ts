@@ -45,10 +45,10 @@ async function sweepOnce(db: Queryable, outcome: SweepOutcome): Promise<void> {
       : [];
 
     // An UNASSIGNED request goes back into circulation as soon as *anybody* is
-    // available, which includes the volunteer it was already offered to. So the
-    // batch is deliberately NOT excluded here — the only person in range may be
-    // the one we notified last time, and excluding them would strand the request
-    // forever. markDispatched finds the single nearest volunteer and re-offers.
+    // available, which includes the volunteers already sitting in its batch.
+    // Searching with the batch excluded — to avoid duplicate notifications —
+    // would find nobody here and leave the request stranded forever, because
+    // the only volunteers in range are the ones we just excluded.
     if (row.status === 'UNASSIGNED') {
       const request = {
         id: requestId,
@@ -57,29 +57,34 @@ async function sweepOnce(db: Queryable, outcome: SweepOutcome): Promise<void> {
         longitude: Number(row.longitude),
         priority: row.priority as "normal" | "urgent",
       };
-      // Reset the attempt counter. The request is starting a genuinely new
-      // chance, and keeping the exhausted count would make the very next sweep
-      // see `attempt >= maxAttempts` and flip it straight back to UNASSIGNED —
-      // recovery and exhaustion would fight each other every 30 seconds.
-      const { candidate, dispatched } = await markDispatched(db, request, 0, { onlyIfCandidate: true });
+      // onlyIfCandidate: this sweep is polling for availability, not
+      // dispatching. With nobody in range it must leave the row alone rather
+      // than rewrite UNASSIGNED to DISPATCHED and imply somebody was told.
+      // Resetting the attempt counter is deliberate too: the request is starting
+      // a genuinely new chance, and keeping the exhausted count would make the
+      // very next sweep flip it straight back to UNASSIGNED.
+      const { candidates: available, dispatched } = await markDispatched(db, request, 0, { onlyIfCandidate: true });
       if (!dispatched) {
         // Nobody yet. Leave it UNASSIGNED so the sweep keeps retrying, without
         // burning an attempt or re-alerting the police every 30 seconds.
         continue;
       }
       outcome.recovered += 1;
-      if (candidate) {
+      // Only somebody who was not already in the batch needs telling. The
+      // others were notified when the request was first dispatched.
+      const fresh = available.filter((c) => !priorIds.includes(c.id));
+      if (fresh.length > 0) {
         outcome.newBatches.push({
           requestId,
           category: row.category,
-          candidates: [{ id: candidate.id, fcmToken: candidate.fcmToken }],
+          candidates: fresh.map((c) => ({ id: c.id, fcmToken: c.fcmToken })),
         });
       }
       continue;
     }
 
     if (attempt < maxAttempts) {
-      const { candidate } = await markDispatched(
+      const { candidates } = await markDispatched(
         db,
         {
           id: requestId,
@@ -100,14 +105,14 @@ async function sweepOnce(db: Queryable, outcome: SweepOutcome): Promise<void> {
         after: { status: "DISPATCHED", dispatch_attempt: attempt + 1 },
       });
       outcome.redispatched += 1;
-      // No fresh volunteer means the batch was left as-is and nobody is
-      // re-notified: the volunteer already offered it can still accept, and
-      // re-pinging the same phone every 30s would just be noise.
-      if (candidate) {
+      // An empty result means the batch was left as-is and nobody new is
+      // re-notified: everyone already offered it can still accept, and re-pinging
+      // the same phones every 30s would just be noise.
+      if (candidates.length > 0) {
         outcome.newBatches.push({
           requestId,
           category: row.category,
-          candidates: [{ id: candidate.id, fcmToken: candidate.fcmToken }],
+          candidates: candidates.map((c) => ({ id: c.id, fcmToken: c.fcmToken })),
         });
       }
     } else {

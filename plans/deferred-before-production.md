@@ -106,15 +106,10 @@ point. Sorting on it produces confident wrong answers: "620 m away" between two
 people in different parts of the city, and a volunteer at the bottom of the list
 who could actually walk there.
 
-**This got worse on 2026-09-27, and is now the top risk in the file.** Automatic
-matching was changed to offer each request to the **single nearest** eligible
-volunteer instead of a fan-out (see §4). Under fan-out, a wrong nearest-neighbour
-ranking was merely a poor ordering — the request also reached the other four
-people in range and somebody would take it. Under single-target there is no
-fallback: if the ranking picks the wrong person, the request is now held by
-precisely the wrong volunteer and nobody else is told. **The matcher is no longer
-safe to run on guessed coordinates.** Until positions are real, prefer police
-hand-assignment (P-05).
+**This is load-bearing, not cosmetic.** Every created request is fanned out to
+every on-duty volunteer inside the radius, so the distance calculation decides
+*which phones ring* — not just the order of a list a human reads. A bad
+coordinate does not degrade the feature, it misdirects it. See §4.
 
 **The backend already supports the fix.** P-04 accepts `lat`/`lng` and returns
 `distance_m`, ordering `can_assign DESC, distance_m ASC`. Nothing needs to be
@@ -133,8 +128,7 @@ rebuilt — only better coordinates fed in.
    `MATCH_RADIUS_M`, does police get offered the nearest anyway with a warning,
    or nothing? Today, manual dispatch is the only way such a request is served.
 5. Then re-check auto-dispatch accuracy against real data before trusting it to
-   silently dispatch — and note that "silently" now means "with no second
-   recipient to fall back on".
+   notify anybody.
 
 **Done when.** Distance is shown in the dialog, the ordering is stable, and the
 displayed distances match reality for a few volunteers you check by hand.
@@ -176,10 +170,12 @@ badge. That covers the app-in-foreground case only. Backgrounded, killed, or
 never-opened, the volunteer finds out by opening the app. The poll interval is
 injected as `VolunteerHomeScreen.pollInterval` so tests can disable it.
 
-**This matters more since matching became single-target (§4).** The poll is no
-longer just a convenience over a five-volunteer fan-out — it is currently the
-*only* way the one chosen volunteer ever hears about the request. There is no
-second recipient to fall back on.
+**This is the only delivery channel, and it scales with the fan-out.** Every
+created request is offered to every on-duty volunteer in range (§4), so this
+poll is what carries the request to all of them. That is fine while the app is
+foregrounded, but it means the number of phones that learn about a request grows
+with the volunteer base while the number that actually hear about it stays
+capped at whoever happens to have the app open.
 
 **Why the dependency was not just added.** The FlutterFire Gradle plugin
 requires `google-services.json` at build time; without it the Android build
@@ -229,20 +225,23 @@ if **all** of these hold:
 - within the radius of the request, measured against
   `COALESCE(current_*, base_*)`
 
-**Changed on 2026-09-27: a request now goes to ONE volunteer, not a fan-out.**
-`findCandidates` became `findBestCandidate` and the request is offered to the
-nearest eligible volunteer only; `dispatch_batch` still exists but holds a single
-entry. `DISPATCH_BATCH_SIZE` is gone. The reason this matters for the list below
-is that it removes one failure mode and sharpens another:
+**Every created request is offered to every available volunteer in range.** This
+was briefly changed to a single-target "nearest volunteer only" design on
+2026-09-27 and then deliberately reverted the same day; fan-out is the intended
+behaviour. Two notes so the decision is not relitigated by accident:
 
-- **Removed:** the same job being pushed at up to five phones at once, with
-  whoever happened to be awake winning it. The senior was told "help is on the
-  way" while three other volunteers were also being buzzed for the same errand.
-- **Sharpened:** because there is now exactly one intended recipient, a *wrong*
-  choice is worse than it was. If the nearest volunteer is chosen on a guessed
-  coordinate, the request is now stuck with precisely the wrong person instead of
-  quietly also reaching the right one. Real positions went from "improves
-  ranking" to "the whole feature depends on it".
+- `DISPATCH_BATCH_SIZE` was raised from 5 to **100** so the count cap does not
+  quietly contradict the intent. The real bound on who hears about a request is
+  `MATCH_RADIUS_M`, not the batch size — every eligible volunteer inside the
+  radius is offered it, nearest first, and the first to accept takes it. The
+  count is only a safety valve against a pathological blast if the radius ever
+  covers a dense area. **This number is a placeholder and is expected to be
+  tuned later**; if you change it, keep it high enough that the fan-out is real.
+- The consequence to remember: a request is pushed at every on-duty volunteer
+  within `MATCH_RADIUS_M`, so a *wrong* distance calculation does not merely
+  reorder the list — it decides which phones ring. With coordinates typed at
+  registration, "nearest" is a guess, and the guess is now load-bearing for
+  everyone who gets notified rather than for one person.
 
 **Two traps, both silent.**
 
@@ -269,19 +268,19 @@ of a senior believing help is on the way, ending in a state nobody can act on.
 The create response does return `dispatched_to`, so an empty array is
 detectable, but nothing surfaces it to the senior today.
 
-*Partial mitigation now in place.* The recovery sweep passes
-`onlyIfCandidate`, so an `UNASSIGNED` request is no longer rewritten to
-`DISPATCHED` before anyone is available — it stays put and is retried silently.
-That closes the ping-pong, not the underlying problem: a request created where
-nobody is eligible is still marked `DISPATCHED` and still invisible.
+*Partly fixed.* The recovery sweep passes `onlyIfCandidate`, so an `UNASSIGNED`
+request is no longer rewritten to `DISPATCHED` before anyone is available — it
+stays put and is retried silently. This was a real bug: a senior saw "help is on
+the way" on a request nobody had been notified about. It does not fix the
+underlying problem, because a request *created* where nobody is eligible is still
+marked `DISPATCHED` and still invisible.
 
 **Also worth knowing: `dispatch_batch` is not an authorisation check.** It
 controls who *sees* a request in `/nearby` (Q-04), and it is what the accept and
 decline paths read, but `acceptRequest` itself only checks
 `status = 'DISPATCHED'` (`requests.service.ts:283`). Any on-duty volunteer who
-learns a request id can accept it, even one it was never offered. Low practical
-risk, since the id comes from `/nearby` or from police, but it means the batch is
-a routing hint rather than a guarantee.
+learns a request id can accept it, even one it was never offered. Under fan-out
+this matters less, since everyone in range is offered it anyway.
 
 **Diagnose a specific volunteer with:**
 
@@ -300,8 +299,8 @@ where u.role = 'volunteer';
 
 All three must be non-default — `is_active`, `APPROVED`, `is_available` — and
 the base coordinates must be within `MATCH_RADIUS_M` of the request. Then
-compare against what the dispatcher actually chose. With single-target dispatch
-the batch has one entry, and that entry is the whole story:
+compare against who actually got it. `dispatch_batch` is cumulative, so it is
+the full list of everyone the request was ever offered to:
 
 ```sql
 select hr.id, hr.status, hr.priority, hr.dispatch_attempt,
@@ -312,20 +311,22 @@ order by hr.created_at desc;
 ```
 
 Anything listed there was dispatched to nobody. To see who a live request is
-waiting on:
+waiting on, nearest first:
 
 ```sql
 select hr.id, hr.status, hr.dispatch_attempt,
-       e->>'id' as waiting_on_volunteer
+       e->>'id'          as offered_to,
+       e->>'distance_m'  as metres
 from help_requests hr,
      lateral jsonb_array_elements(hr.dispatch_batch) e
-where hr.status = 'DISPATCHED';
+where hr.status = 'DISPATCHED'
+order by (e->>'distance_m')::numeric;
 ```
 
 **Fix.**
 
 1. Real positions first — see §2. Everything else here depends on it, and under
-   single-target dispatch it is now load-bearing rather than a ranking nicety.
+   a real fan-out it decides which phones ring.
 2. Until then, police hand-assignment (P-05) is the only reliable path, and it
    bypasses the radius entirely. Make that the documented manual procedure.
 3. Decide the no-candidates product rule, which §2.4 also raises: tell the
@@ -334,14 +335,13 @@ where hr.status = 'DISPATCHED';
 4. Do not mark a request `DISPATCHED` on an empty batch — or at least carry an
    explicit `awaiting_volunteer` state, so "nobody available" stops looking
    identical to "help is on the way".
-5. Decide what a *decline* means now that there is only one recipient. Today
-   `declineRequest` deliberately leaves the request in `DISPATCHED` on the
-   reasoning that "other volunteers can still take it" — with one recipient
-   there are no others, so a decline currently just sits there until the sweep
-   times it out. The decline should hand the request straight to the next
-   volunteer instead.
+5. Decide what a *decline* means. Today `declineRequest` leaves the request in
+   `DISPATCHED` for the rest of the batch to pick up, which is correct under
+   fan-out — but nothing re-offers it to the declining volunteer's side of the
+   radius, so a request that every nearby volunteer declines simply times out.
 6. Reconsider whether `MATCH_RADIUS_M=5000` is even right, given §2: a radius
-   computed from guessed coordinates is a confident wrong answer.
+   computed from guessed coordinates decides who gets told, so a wrong radius is
+   a wrong answer for everybody in it.
 
 **Done when.** A request created where no eligible volunteer exists says so
 promptly and lands somewhere a human can act, instead of timing out into
@@ -394,6 +394,11 @@ promptly and lands somewhere a human can act, instead of timing out into
 - [ ] `web` bundle contains no `123456`; hint gated on `import.meta.env.DEV`
 - [ ] Real OTP provider wired; `OTP_DEV_CODE` out of the deployed env
 - [ ] `REQUESTS_DRY_RUN` explicitly `false` **only** in production
+- [ ] `DISPATCH_BATCH_SIZE` settled for real traffic — it is a placeholder at
+      100 and is only a safety valve, not the intended limit. The intent is that
+      every available volunteer in `MATCH_RADIUS_M` is offered each request, so
+      do not lower it to something small without deciding that is the product
+      (§4)
 - [ ] Volunteer coordinates are real and fresh, or the no-distance UI is kept
       deliberately and this file's §2 is still open
 - [ ] `UNASSIGNED` has a police recovery path
