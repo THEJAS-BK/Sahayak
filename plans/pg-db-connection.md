@@ -24,7 +24,7 @@ Connect a GUI (pgAdmin, DBeaver, TablePlus) with the same string.
 created in the Neon console.
 
 ```env
-DATABASE_URL_TEST=postgresql://USER:PASSWORD@ep-xxx-pooler.REGION.aws.neon.tech/neondb_test?sslmode=require
+DATABASE_URL_TEST=postgresql://USER:PASSWORD@ep-yyy-pooler.REGION.aws.neon.tech/neondb?sslmode=require
 ```
 
 This is not a formality. Tests truncate every table, so pointing
