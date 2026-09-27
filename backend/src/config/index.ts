@@ -37,6 +37,7 @@ const rawEnv = z
     PORT: intFromEnv(3000),
     DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
     DATABASE_URL_TEST: z.string().optional(),
+    PG_POOL_MAX: intFromEnv(10),
     JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
     JWT_ACCESS_TTL: z.string().regex(DURATION_RE, 'Must look like 15m / 8h / 90d').default('15m'),
     JWT_REFRESH_TTL: z.string().regex(DURATION_RE, 'Must look like 15m / 8h / 90d').default('90d'),
@@ -53,6 +54,13 @@ const rawEnv = z
     SMTP_FROM: emptyToUndefined,
     SMTP_SECURE: emptyToUndefined,
     FCM_SERVICE_ACCOUNT_JSON: emptyToUndefined,
+    FIREBASE_SERVICE_ACCOUNT_JSON: emptyToUndefined,
+    FCM_ENABLED: emptyToUndefined,
+    FIREBASE_SYNC_ENABLED: emptyToUndefined,
+    FIREBASE_DATABASE_ID: strFromEnv('(default)'),
+    FIREBASE_SYNC_INTERVAL_S: intFromEnv(10),
+    FIREBASE_SYNC_BATCH: intFromEnv(200),
+    FIREBASE_SYNC_MAX_ATTEMPTS: intFromEnv(5),
     OTP_DEV_CODE: emptyToUndefined,
     LIVEKIT_URL: emptyToUndefined,
     LIVEKIT_API_KEY: emptyToUndefined,
@@ -62,14 +70,10 @@ const rawEnv = z
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== 'production') return
-    const required = [
-      'SMTP_HOST',
-      'SMTP_PORT',
-      'SMTP_USER',
-      'SMTP_PASS',
-      'SMTP_FROM',
-      'FCM_SERVICE_ACCOUNT_JSON',
-    ] as const
+    // Push (FCM) is not required to boot: it degrades to a log line, and the
+    // Firestore mirror is opt-in, so neither credential is mandatory. SMTP
+    // still is, because email is the notification path that actually ships.
+    const required = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM'] as const
     for (const key of required) {
       if (env[key] === undefined) {
         ctx.addIssue({ code: 'custom', path: [key], message: `${key} is required when NODE_ENV=production` })
@@ -138,10 +142,43 @@ export const config = {
           secure: env.SMTP_SECURE === 'true' || env.SMTP_SECURE === '1',
         }
       : null,
-  fcmServiceAccountPathOrJson:
-    typeof env.FCM_SERVICE_ACCOUNT_JSON === 'string' && env.FCM_SERVICE_ACCOUNT_JSON.length > 0
+  /**
+   * The Firebase Admin credential, as a path to a downloaded key file or the
+   * key JSON inline. Shared by the Firestore mirror and (optionally) push.
+   *
+   * `FIREBASE_SERVICE_ACCOUNT_JSON` is the canonical name. The older
+   * `FCM_SERVICE_ACCOUNT_JSON` is still honoured so an existing `.env` keeps
+   * working, but it is only a fallback: the mirror must not depend on a
+   * variable named after a feature that can be switched off.
+   */
+  firebaseServiceAccountPathOrJson:
+    (typeof env.FIREBASE_SERVICE_ACCOUNT_JSON === 'string' && env.FIREBASE_SERVICE_ACCOUNT_JSON.length > 0
+      ? env.FIREBASE_SERVICE_ACCOUNT_JSON
+      : null) ??
+    (typeof env.FCM_SERVICE_ACCOUNT_JSON === 'string' && env.FCM_SERVICE_ACCOUNT_JSON.length > 0
       ? env.FCM_SERVICE_ACCOUNT_JSON
-      : null,
+      : null),
+  fcm: {
+    /**
+     * Off by default, and independent of whether a credential is present.
+     * Configuring Firebase for the Firestore mirror must not switch push back
+     * on: the two share one service account but not one intent.
+     */
+    enabled: env.FCM_ENABLED === 'true' || env.FCM_ENABLED === '1',
+  },
+  pool: {
+    max: env.PG_POOL_MAX,
+  },
+  firebaseSync: {
+    // Off by default so the mirror cannot become a surprise dependency: without
+    // it the outbox still fills, but nothing drains it and Postgres is unaffected.
+    enabled: env.FIREBASE_SYNC_ENABLED === 'true' || env.FIREBASE_SYNC_ENABLED === '1',
+    databaseId: env.FIREBASE_DATABASE_ID,
+    intervalS: env.FIREBASE_SYNC_INTERVAL_S,
+    // Firestore caps a batch at 500 operations; stay under it with headroom.
+    batchSize: Math.min(env.FIREBASE_SYNC_BATCH, 400),
+    maxAttempts: env.FIREBASE_SYNC_MAX_ATTEMPTS,
+  },
   otpDevCode: typeof env.OTP_DEV_CODE === 'string' ? env.OTP_DEV_CODE : null,
   livekit: {
     url: typeof env.LIVEKIT_URL === 'string' ? env.LIVEKIT_URL : '',

@@ -1,5 +1,7 @@
 import 'dotenv/config'
 import { closePool, withTransaction, type Queryable } from '../src/database/pool.js'
+import { config } from '../src/config/index.js'
+import { assertDestructiveAllowed } from '../src/lib/db-guard.js'
 import { logger } from '../src/lib/logger.js'
 
 const FRESH = process.argv.includes('--fresh')
@@ -42,6 +44,12 @@ async function upsertPolice(db: Queryable, email: string, now: Date): Promise<st
 
 async function main(): Promise<void> {
   const email = policeEmail()
+
+  // --fresh truncates every business table, which on the single shared database
+  // would delete every teammate's work. Guarded for the same reason as db:reset.
+  if (FRESH) {
+    assertDestructiveAllowed(config.databaseUrl, 'truncate every business table to reseed')
+  }
 
   const policeId = await withTransaction(async (db) => {
     // --fresh wipes every business table before the insert; without it this run only touches the police row

@@ -95,6 +95,13 @@ All of the above require `Authorization: Bearer <token>` for a `police` role.
 - Emergencies, Seniors, Volunteers pages (no backend list endpoints / user
   chose to keep only the existing four pages connected).
 
+> **Superseded 2026-09-27.** The Emergencies endpoints *do* exist —
+> `GET /police/emergency-events` (E-02) and `PATCH /police/emergency-events/:id`
+> (E-03) were added after this plan was written, and both are covered by
+> `tests/emergency.test.ts`. `GET /police/volunteers` and `GET /audit-logs` also
+> exist. The Emergencies page is web-only work, not blocked on the backend. See
+> `web-portal-gaps.md` for the verified per-page status.
+
 ## Verification
 
 ```bash

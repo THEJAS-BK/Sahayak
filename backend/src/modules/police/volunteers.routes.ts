@@ -4,7 +4,7 @@ import { errors } from '../../lib/errors.js'
 import { asyncHandler, ok } from '../../lib/http.js'
 import { pool } from '../../database/pool.js'
 import { authenticate, requireActive, requireRole } from '../../middleware/auth.js'
-import { listAssignableVolunteers } from './volunteers.service.js'
+import { listAssignableVolunteers, getVolunteerDetail } from './volunteers.service.js'
 
 const router = Router()
 
@@ -33,6 +33,24 @@ router.get(
     const { lat, lng, ...rest } = parsed.data
     const result = await listAssignableVolunteers(pool, { ...rest, latitude: lat, longitude: lng })
     ok(res, result)
+  }),
+)
+
+/** P-05b: one volunteer's record, for the console's detail page. */
+router.get(
+  '/:id',
+  authenticate,
+  requireRole('police'),
+  requireActive,
+  asyncHandler(async (req, res) => {
+    const parsed = z.uuid().safeParse(req.params.id)
+    if (!parsed.success) throw errors.badRequest('Invalid volunteer id')
+    // A volunteer who does not exist, and a user who is not a volunteer, are
+    // both "not found": the console should not be able to probe which user ids
+    // hold which role.
+    const volunteer = await getVolunteerDetail(pool, parsed.data)
+    if (!volunteer) throw errors.notFound('Volunteer not found')
+    ok(res, { volunteer })
   }),
 )
 

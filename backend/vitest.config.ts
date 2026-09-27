@@ -1,7 +1,35 @@
 import 'dotenv/config'
 import { defineConfig } from 'vitest/config'
+import { assertTestDatabaseIsolated } from './src/lib/db-guard.js'
 
-const testUrl = process.env.DATABASE_URL_TEST || process.env.DATABASE_URL || ''
+/**
+ * Resolve the test database from the real `.env`, before the overrides below
+ * replace it.
+ *
+ * `DATABASE_URL_TEST` is required and may not be the same database as
+ * `DATABASE_URL`. Tests truncate every table, so a teammate who copied the
+ * shared connection string into both variables would silently wipe everyone's
+ * data on the next `npm test`. The old fallback here
+ * (`DATABASE_URL_TEST || DATABASE_URL`) did exactly that.
+ *
+ * This check has to live in this file: the `env` block below deliberately points
+ * `DATABASE_URL` at the test database so the request pipeline under test hits
+ * the right place, which means by the time application code reads the config the
+ * two values are indistinguishable.
+ */
+const appUrl = process.env.DATABASE_URL ?? ''
+const rawTestUrl = process.env.DATABASE_URL_TEST
+
+if (!rawTestUrl) {
+  throw new Error(
+    'DATABASE_URL_TEST must be set to run tests. Point it at a dedicated test ' +
+      'database (a Neon test branch) — never at the shared one, because tests ' +
+      'truncate every table.',
+  )
+}
+assertTestDatabaseIsolated(appUrl, rawTestUrl)
+
+const testUrl = rawTestUrl
 
 export default defineConfig({
   test: {

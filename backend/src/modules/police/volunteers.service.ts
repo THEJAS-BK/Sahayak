@@ -35,6 +35,97 @@ export interface VolunteerFilter {
   limit: number
 }
 
+function numeric(value: unknown): number | null {
+  if (value === null || value === undefined) return null
+  return typeof value === 'string' ? Number(value) : (value as number)
+}
+
+/**
+ * P-05b: one volunteer's record, for the console's volunteer detail page.
+ *
+ * Returns `null` for a non-volunteer or unknown id; the route turns that into a
+ * 404. Assignment history comes from `help_requests.dispatch_batch` (JSONB) and
+ * `request_declines` rather than a join table, because that is where dispatch
+ * already records who was sent.
+ */
+export async function getVolunteerDetail(
+  db: Queryable,
+  userId: string,
+): Promise<Record<string, unknown> | null> {
+  const volunteer = await db.query(
+    `SELECT u.id, u.email, u.is_active, u.created_at,
+            vp.full_name, vp.phone_number, vp.organization, vp.skills,
+            vp.club_id, vp.is_available, vp.id_proof_ref,
+            vp.base_latitude, vp.base_longitude,
+            vp.current_latitude, vp.current_longitude, vp.location_updated_at,
+            (SELECT hr.id FROM help_requests hr
+              WHERE hr.assigned_volunteer_id = u.id AND hr.status IN ('ACCEPTED','IN_PROGRESS')
+              LIMIT 1) AS active_request_id,
+            EXISTS (SELECT 1 FROM user_verifications uv
+                     WHERE uv.user_id = u.id AND uv.status = 'APPROVED') AS is_verified,
+            (SELECT uv.status FROM user_verifications uv
+              WHERE uv.user_id = u.id ORDER BY uv.created_at DESC LIMIT 1) AS verification_status
+     FROM users u
+     JOIN volunteer_profiles vp ON vp.user_id = u.id
+     WHERE u.id = $1 AND u.role = 'volunteer'`,
+    [userId],
+  )
+  if (volunteer.rowCount === 0) return null
+  const v = volunteer.rows[0]
+
+  // The batch is JSONB, so expansion needs jsonb_array_elements rather than a
+  // join. Assigned and offered are both interesting: a decline is a record that
+  // this volunteer saw the job and said no, which is what a police officer
+  // reviewing a slow dispatch wants to know.
+  const assignments = await db.query(
+    `SELECT hr.id AS request_id, hr.category, hr.status, hr.created_at,
+            hr.dispatched_at, hr.accepted_at, hr.completed_at,
+            (b.value->>'id')::uuid AS offered_at,
+            (b.value->>'distance_m')::double precision AS distance_m,
+            COALESCE(hr.assigned_volunteer_id = (b.value->>'id')::uuid, false) AS was_assigned,
+            (rd.reason IS NOT NULL) AS declined
+     FROM help_requests hr
+     CROSS JOIN LATERAL jsonb_array_elements(COALESCE(hr.dispatch_batch, '[]'::jsonb))
+       AS b(value)
+     LEFT JOIN request_declines rd
+       ON rd.request_id = hr.id AND rd.volunteer_id = (b.value->>'id')::uuid
+     WHERE hr.assigned_volunteer_id = $1
+        OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(hr.dispatch_batch, '[]'::jsonb)) x
+                   WHERE (x.value->>'id')::uuid = $1)
+     ORDER BY hr.created_at DESC
+     LIMIT 50`,
+    [userId],
+  )
+
+  // Only the current assignment is "active"; the rest is history.
+  const active = assignments.rows.find(
+    (a) => a.request_id === v.active_request_id,
+  )
+
+  return {
+    id: v.id,
+    email: v.email,
+    is_active: Boolean(v.is_active),
+    full_name: v.full_name,
+    phone_number: v.phone_number,
+    organization: v.organization,
+    skills: Array.isArray(v.skills) ? v.skills : [],
+    club_id: v.club_id ?? null,
+    id_proof_ref: v.id_proof_ref ?? null,
+    is_available: Boolean(v.is_available),
+    is_verified: Boolean(v.is_verified),
+    verification_status: v.verification_status ?? 'NONE',
+    base_latitude: numeric(v.base_latitude),
+    base_longitude: numeric(v.base_longitude),
+    current_latitude: numeric(v.current_latitude),
+    current_longitude: numeric(v.current_longitude),
+    location_updated_at: v.location_updated_at ?? null,
+    active_request_id: active?.request_id ?? null,
+    assignments: assignments.rows,
+    created_at: v.created_at,
+  }
+}
+
 /**
  * P-04: volunteers a police officer can dispatch to by hand.
  *

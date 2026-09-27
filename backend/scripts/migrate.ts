@@ -2,11 +2,18 @@ import 'dotenv/config'
 import { runner } from 'node-pg-migrate'
 import pg from 'pg'
 import { config } from '../src/config/index.js'
+import { assertDestructiveAllowed } from '../src/lib/db-guard.js'
 import { logger } from '../src/lib/logger.js'
 
 const COMMAND = process.argv[2] ?? 'up'
 
 async function run(): Promise<void> {
+  // `reset` drops the whole public schema. There is one shared database, so
+  // this is guarded before a connection is even opened.
+  if (COMMAND === 'reset') {
+    assertDestructiveAllowed(config.databaseUrl, 'drop and recreate the public schema')
+  }
+
   const db = new pg.Client({ connectionString: config.databaseUrl })
   await db.connect()
 

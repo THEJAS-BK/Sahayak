@@ -6,6 +6,12 @@ import { Verification } from './pages/Verification';
 import { Requests } from './pages/Requests';
 import { RequestDetails } from './pages/RequestDetails';
 import { Login } from './pages/Login';
+import { Emergencies } from './pages/Emergencies';
+import { Volunteers } from './pages/Volunteers';
+import { VolunteerDetails } from './pages/VolunteerDetails';
+import { Seniors } from './pages/Seniors';
+import { SeniorDetails } from './pages/SeniorDetails';
+import { AuditLogs } from './pages/AuditLogs';
 import { getSessionRole, getToken } from './api/client';
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -44,6 +50,12 @@ function App() {
           <Route path="verification" element={<Verification />} />
           <Route path="requests" element={<Requests />} />
           <Route path="requests/:requestId" element={<RequestDetails />} />
+          <Route path="emergencies" element={<Emergencies />} />
+          <Route path="volunteers" element={<Volunteers />} />
+          <Route path="volunteers/:volunteerId" element={<VolunteerDetails />} />
+          <Route path="seniors" element={<Seniors />} />
+          <Route path="seniors/:seniorId" element={<SeniorDetails />} />
+          <Route path="audit-logs" element={<AuditLogs />} />
           <Route path="*" element={<div style={{ padding: '2rem' }}>Page not found or under construction.</div>} />
         </Route>
       </Routes>

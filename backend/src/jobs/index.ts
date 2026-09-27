@@ -5,6 +5,7 @@ import { logger } from "../lib/logger.js";
 import { findCandidates, markDispatched } from "../modules/matching/matching.service.js";
 import { notifyDispatch } from "../modules/notifications/request.js";
 import { notifyPolice } from "../modules/notifications/police.js";
+import { drainFirebaseSync } from "../modules/firebase-sync/sync.service.js";
 import type { Queryable } from "../database/pool.js";
 
 export interface SweepOutcome {
@@ -171,6 +172,7 @@ export async function runCleanup(): Promise<{
 
 let dispatchLock = false;
 let cleanupLock = false;
+let firebaseSyncLock = false;
 
 async function guardedDispatch(): Promise<void> {
   if (dispatchLock) {
@@ -219,6 +221,26 @@ async function guardedCleanup(): Promise<void> {
   }
 }
 
+async function guardedFirebaseSync(): Promise<void> {
+  // Off by default; the outbox still fills, it just is not drained.
+  if (!config.firebaseSync.enabled) return;
+  if (firebaseSyncLock) return;
+  firebaseSyncLock = true;
+  try {
+    const outcome = await drainFirebaseSync();
+    if (outcome.attempted > 0) {
+      logger.info(
+        `[bg] firestore sync: ${outcome.written} written, ${outcome.deleted} deleted, ${outcome.failed} failed`,
+      );
+    }
+  } catch (err) {
+    // Never let a mirror problem take down the process that owns the real work.
+    logger.error("[bg] firestore sync failed", err);
+  } finally {
+    firebaseSyncLock = false;
+  }
+}
+
 import * as cron from "node-cron";
 
 export function startBackgroundJobs() {
@@ -232,7 +254,17 @@ export function startBackgroundJobs() {
     void guardedCleanup();
   });
 
+  if (config.firebaseSync.enabled) {
+    cron.schedule(`*/${config.firebaseSync.intervalS} * * * * *`, () => {
+      void guardedFirebaseSync();
+    });
+  }
+
   logger.info(
-    "[bg] background jobs scheduled (dispatch sweep 30s, cleanup daily 03:15)",
+    `[bg] background jobs scheduled (dispatch sweep 30s, cleanup daily 03:15${
+      config.firebaseSync.enabled
+        ? `, firestore sync ${config.firebaseSync.intervalS}s`
+        : ", firestore sync disabled"
+    })`,
   );
 }

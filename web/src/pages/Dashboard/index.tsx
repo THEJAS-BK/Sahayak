@@ -39,7 +39,7 @@ export const Dashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([fetchPoliceRequests({ limit: '200' }), fetchAuditLogs(10)])
+    Promise.all([fetchPoliceRequests({ limit: '200' }), fetchAuditLogs({ limit: 10 })])
       .then(([reqResult, auditResult]) => {
         setRequests(reqResult.requests);
         setAuditLogs(auditResult.logs);

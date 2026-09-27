@@ -124,7 +124,8 @@ lock (in-process guard)
 
 ### Notifications in development
 
-`SMTP_*` and `FCM_SERVICE_ACCOUNT_JSON` are **optional in development** and
+`SMTP_*` is **required in production** while `FIREBASE_SERVICE_ACCOUNT_JSON`
+and `FCM_ENABLED` are **optional in development** and
 **required in production** (`NODE_ENV=production` fails fast if missing). When
 absent, the adapters log what would be sent and return success — dev flow is
 exercisable with a bare `DATABASE_URL`. This is a deliberate deviation from §8

@@ -29,7 +29,7 @@ const fcmSchema = z.object({ fcm_token: z.string().min(1).max(1024) })
 router.patch(
   '/me/fcm-token',
   authenticate,
-  requireRole('senior', 'volunteer'),
+  requireRole('senior', 'volunteer', 'police'),
   requireActive,
   asyncHandler(async (req, res) => {
     const body = fcmSchema.safeParse(req.body)

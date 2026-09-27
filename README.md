@@ -32,19 +32,21 @@ for the original setup plan.
 cd backend
 npm install               # install dependencies
 
-npm run db:migrate         # apply pending migrations to :5432
+npm run db:migrate         # apply pending migrations to the shared database
 
 npm run dev               # start dev server -> http://localhost:3000
 ```
 
-PostgreSQL 18 must already be running on `:5432` (the server pgAdmin registers as
-`postgres`) — see `plans/pg-db-connection.md`. `npm run db:start` is only for the
-alternative rootless cluster on `:5433`, which nothing points at by default.
+The database is a **shared Neon Postgres**. Put the pooled connection string in
+`DATABASE_URL` and a *separate* test database's string in `DATABASE_URL_TEST`
+(create it as a Neon test branch) — see `plans/pg-db-connection.md`. There is no
+local Postgres.
 
 `npm run db:reset` drops the database schema and reapplies all migrations,
-which deletes all existing data. Use it only for a clean setup or when you
-intentionally want to reset the database; use `npm run db:migrate` for normal
-startup.
+which deletes all existing data. Because the database is shared, this is
+**refused by default** and must be forced with
+`SAHAYAK_ALLOW_DESTRUCTIVE=1 npm run db:reset`. The same applies to
+`npm run db:seed:fresh`. Use `npm run db:migrate` for normal startup.
 
 Other scripts:
 
@@ -66,9 +68,10 @@ Copy `.env.example` to `.env` and edit. Key variables:
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `3000` | Server listen port |
-| `DATABASE_URL` | — | `postgres://postgres:postgres@localhost:5432/sahayak` |
-| `DATABASE_URL_TEST` | `DATABASE_URL` | Vitest target database |
-| `JWT_SECRET` | — | Random string ≥ 32 chars |
+| `DATABASE_URL` | — | Shared Neon Postgres, pooled endpoint |
+| `DATABASE_URL_TEST` | — | **Separate** test database (a Neon test branch). Never the same as `DATABASE_URL` — the backend refuses to start otherwise, because tests truncate every table |
+| `PG_POOL_MAX` | `10` | Pooled connections; keep below Neon's per-endpoint limit |
+| `JWT_SECRET` | — | Random string ≥ 32 chars. **Must be identical across all machines** |
 | `JWT_ACCESS_TTL` | `15m` | Access token lifetime |
 | `JWT_REFRESH_TTL` | `90d` | Refresh token lifetime |
 | `OTP_DEV_CODE` | — | Dev-only fixed OTP (e.g. `123456`) |
@@ -78,7 +81,8 @@ Copy `.env.example` to `.env` and edit. Key variables:
 | `MAX_DISPATCH_ATTEMPTS` | `3` | Retries before `UNASSIGNED` |
 | `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | (empty) | Voice agent (LiveKit) credentials |
 | `SMTP_*` | (empty) | Required only in `NODE_ENV=production` |
-| `FCM_SERVICE_ACCOUNT_JSON` | (empty) | Path or inline JSON; required in production |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | (empty) | Path or inline JSON; needed only for the Firestore mirror |
+| `FCM_ENABLED` | `false` | Push delivery. Off; the mirror works without it |
 
 ### Health check
 
@@ -123,6 +127,24 @@ npm run lint      # lint source with oxlint
 
 > The portal targets `http://localhost:3000/api` by default; override with the
 > `VITE_API_URL` env var if your backend lives elsewhere.
+
+### Pages
+
+| Route | Page | Endpoint |
+|---|---|---|
+| `/` | Dashboard | `GET /api/police/requests`, `GET /api/audit-logs` |
+| `/requests` | Requests | `GET /api/police/requests` |
+| `/requests/:requestId` | Request detail | `GET /api/requests/:id` |
+| `/verification` | Verification queue | `GET /api/verifications`, `PATCH /api/verifications/:id` |
+| `/emergencies` | Emergency events | `GET /api/police/emergency-events`, `PATCH /api/police/emergency-events/:id` |
+| `/seniors` | Seniors | `GET /api/police/seniors` |
+| `/seniors/:seniorId` | Senior detail | `GET /api/police/seniors/:id` |
+| `/volunteers` | Volunteers | `GET /api/police/volunteers` |
+| `/volunteers/:volunteerId` | Volunteer detail | `GET /api/police/volunteers/:id` |
+| `/audit-logs` | Audit logs | `GET /api/audit-logs` |
+
+Not built: **Monitoring** (no defined purpose) and **Map** (needs a mapping
+library; no new endpoint required). See `plans/web-portal-gaps.md`.
 
 ## Mobile (Flutter — seniors & volunteers)
 
