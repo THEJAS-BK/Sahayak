@@ -19,6 +19,9 @@ typedef AgentTranscriptCallback = void Function(String text, bool isFinal);
 /// Topic the livekit agent publishes structured help requests on.
 const String kSahayakRequestTopic = 'sahayak_request';
 
+/// Topic the app publishes its conversation-language preference on.
+const String kAgentLanguageTopic = 'agent_lang';
+
 /// A structured help request published by the agent over the data channel.
 typedef SahayakRequestCallback = void Function(Map<String, dynamic> request);
 
@@ -50,6 +53,10 @@ class VoiceCallController extends ChangeNotifier {
   CallState _state = CallState.idle;
   bool _busy = false;
 
+  /// Conversation language selected in the UI: 'en' or 'kn'. Sent to the
+  /// agent over the [kAgentLanguageTopic] data channel on connect and on change.
+  String _language = 'en';
+
   Room? _room;
   EventsListener<RoomEvent>? _listener;
 
@@ -58,6 +65,20 @@ class VoiceCallController extends ChangeNotifier {
 
   /// True while a connect/disconnect operation is in flight.
   bool get isBusy => _busy;
+
+  /// Current conversation language ('en' or 'kn').
+  String get language => _language;
+
+  /// Switches the agent's conversation language. Takes effect mid-call by
+  /// publishing the preference to the agent; when no call is live the value is
+  /// stored and sent on the next [start].
+  Future<void> setLanguage(String language) async {
+    if (language != 'en' && language != 'kn') return;
+    _language = language;
+    notifyListeners();
+    await _setLanguageAttribute();
+    await _publishLanguage();
+  }
 
   /// True when the mic is live and the agent may be speaking.
   bool get isInCall =>
@@ -109,6 +130,12 @@ class VoiceCallController extends ChangeNotifier {
 
       await room.connect(url, token);
       await room.localParticipant?.setMicrophoneEnabled(true);
+      // The agent is dispatched from the token, so it joins after this connect
+      // and misses anything published on the data channel right now. Attributes
+      // are room state, so the agent reads the language from them on join and
+      // greets in the right language without waiting for a toggle.
+      await _setLanguageAttribute();
+      await _publishLanguage();
 
       _state = CallState.listening;
     } on ApiException catch (e) {
@@ -138,6 +165,34 @@ class VoiceCallController extends ChangeNotifier {
       _onMessage?.call(enabled
           ? 'Could not turn the microphone back on.'
           : 'Could not mute the microphone.');
+    }
+  }
+
+  /// Best-effort push of the current language preference to the agent. No-op
+  /// until the room is connected; failing to publish must not break the call.
+  Future<void> _publishLanguage() async {
+    final participant = _room?.localParticipant;
+    if (participant == null) return;
+    try {
+      await participant.publishData(
+        utf8.encode(jsonEncode({'v': 1, 'lang': _language})),
+        topic: kAgentLanguageTopic,
+      );
+    } catch (_) {
+      // Best-effort — the agent falls back to English if this never arrives.
+    }
+  }
+
+  /// Best-effort push of the language as a participant attribute. Unlike a data
+  /// packet this is room state, so it is still there when the agent joins after
+  /// us. Failing to set it must not break the call.
+  Future<void> _setLanguageAttribute() async {
+    final participant = _room?.localParticipant;
+    if (participant == null) return;
+    try {
+      await participant.setAttributes({'lang': _language});
+    } catch (_) {
+      // Best-effort — the agent still gets the data-channel push below.
     }
   }
 
@@ -177,6 +232,7 @@ class VoiceCallController extends ChangeNotifier {
     listener
       ..on<RoomConnectedEvent>(
         (_) async {
+          await _publishLanguage();
           _state = CallState.listening;
           notifyListeners();
         },

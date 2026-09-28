@@ -58,6 +58,11 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
   /// True while the confirmed request is being POSTed.
   bool _sending = false;
 
+  // ── Language ───────────────────────────────────────────────────────────────
+  /// Conversation language ('en' or 'kn'): mirrored into the seed greeting and
+  /// forwarded to the agent over the `agent_lang` data channel.
+  String _language = 'en';
+
   // ── Text input ─────────────────────────────────────────────────────────────
   final ScrollController _scrollCtrl = ScrollController();
 
@@ -75,7 +80,7 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
     // Seed with greeting
     _messages = [
       Message(
-        text: 'Hello! How can I help you today?',
+        text: _seedGreeting(_language),
         role: MessageRole.agent,
         timestamp: DateTime.now(),
       ),
@@ -219,15 +224,7 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
       setState(() {
         _pendingRequest = null;
         _messages.add(Message(
-          text: notified
-              ? 'Sent — ${categoryLabel(request.category).toLowerCase()} help'
-                  '${request.priority == 'urgent' ? ' (urgent)' : ''} requested. '
-                  'A volunteer will be in touch shortly.'
-              : 'Sent — ${categoryLabel(request.category).toLowerCase()} help'
-                  '${request.priority == 'urgent' ? ' (urgent)' : ''} requested. '
-                  'No volunteers are nearby right now, so nobody has been '
-                  'notified yet. Please call the helpline, or try again in a '
-                  'little while.',
+          text: _sentNotice(request, notified),
           role: MessageRole.agent,
           timestamp: DateTime.now(),
         ));
@@ -249,6 +246,55 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
   void _showError(String msg) {
     if (!mounted) return;
     setState(() => _errorMessage = msg);
+  }
+
+  /// The offline greeting text shown before the first agent transcript lands.
+  String _seedGreeting(String language) => language == 'kn'
+      ? 'ಸ್ವಾಗತ. ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?'
+      : 'Hello! How can I help you today?';
+
+  /// User-facing notice appended after a request is POSTed, in the current
+  /// conversation language.
+  String _sentNotice(VoiceHelpRequest request, bool notified) {
+    final what = categoryLabel(request.category).toLowerCase();
+    final urgent = request.priority == 'urgent';
+    if (_language == 'kn') {
+      return notified
+          ? 'ಕಳುಹಿಸಲಾಗಿದೆ — $what ಸಹಾಯ'
+              '${urgent ? ' (ತುರ್ತು)' : ''} ವಿನಂತಿಸಲಾಗಿದೆ. '
+              'ಸ್ವಯಂಸೇವಕರು ಶೀಘ್ರದಲ್ಲೇ ನಿಮ್ಮನ್ನು ಸಂಪರ್ಕಿಸುತ್ತಾರೆ.'
+          : 'ಕಳುಹಿಸಲಾಗಿದೆ — $what ಸಹಾಯ'
+              '${urgent ? ' (ತುರ್ತು)' : ''} ವಿನಂತಿಸಲಾಗಿದೆ. ಆದರೆ ಈಗ '
+              'ಸಮೀಪದಲ್ಲಿ ಯಾವುದೇ ಸ್ವಯಂಸೇವಕರು ಇಲ್ಲ, ಹಾಗಾಗಿ ಯಾರಿಗೂ '
+              'ತಿಳಿಸಲಾಗಿಲ್ಲ. ದಯವಿಟ್ಟು ಹೆಲ್ಪ್‌ಲೈನ್‌ಗೆ ಕರೆ ಮಾಡಿ, ಅಥವಾ '
+              'ಸ್ವಲ್ಪ ಸಮಯದ ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.';
+    }
+    return notified
+        ? 'Sent — $what help'
+            '${urgent ? ' (urgent)' : ''} requested. '
+            'A volunteer will be in touch shortly.'
+        : 'Sent — $what help'
+            '${urgent ? ' (urgent)' : ''} requested. '
+            'No volunteers are nearby right now, so nobody has been '
+            'notified yet. Please call the helpline, or try again in a '
+            'little while.';
+  }
+
+  /// Applies a language selection and pushes it to the agent. Before the call
+  /// starts the seed greeting bubble is swapped to match what the agent will
+  /// say when the call (re)starts.
+  void _onLanguageSelected(String language) {
+    if (language == _language) return;
+    setState(() {
+      _language = language;
+      if (!_voice.isInCall &&
+          _convState == ConversationState.idle &&
+          _messages.length == 1 &&
+          _messages.single.isAgent) {
+        _messages[0] = _messages[0].copyWith(text: _seedGreeting(language));
+      }
+    });
+    _voice.setLanguage(language);
   }
 
   void _scrollToBottom() {
@@ -347,6 +393,44 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // ── Language toggle ───────────────────────────────────────
+            Container(
+              color: AppColors.cardWhite,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.translate_rounded,
+                      size: 18, color: AppColors.textSecondary),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Language / ಭಾಷೆ',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const Spacer(),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'en', label: Text('English')),
+                      ButtonSegment(value: 'kn', label: Text('ಕನ್ನಡ')),
+                    ],
+                    selected: {_language},
+                    showSelectedIcon: false,
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                      textStyle: WidgetStatePropertyAll(
+                        TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    onSelectionChanged: (selection) =>
+                        _onLanguageSelected(selection.first),
+                  ),
+                ],
+              ),
+            ),
+
             // ── Error banner ────────────────────────────────────────────
             if (_errorMessage != null) _ErrorBanner(
               message: _errorMessage!,

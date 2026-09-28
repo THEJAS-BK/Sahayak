@@ -258,9 +258,38 @@ With both halves in place the agent joins the room on the first connection.
 
 ### Provider keys
 
-`agent.py` names models as strings (`assemblyai/universal-streaming:en`,
-`openai/gpt-4o-mini`, `cartesia/sonic-2`). The SDK resolves these to
+`agent.py` names models as strings (`google/gemini-3.5-transcribe-live`,
+`openai/gpt-4.1-mini`, `cartesia/sonic-3`). The SDK resolves these to
 `livekit.agents.inference.*` and routes them through the LiveKit inference
 gateway using the existing `LIVEKIT_API_KEY`. There are no AssemblyAI, OpenAI or
 Cartesia plugin packages to install and no separate API keys to configure.
+
+Gemini live-transcribe auto-detects English and Kannada (including
+code-switching), so the same STT serves both toggle states. Cartesia Sonic 3
+covers `kn` for speech output.
+
+### Conversation language (attribute `lang` + topic `agent_lang`)
+
+The senior picks English or ಕನ್ನಡ on the conversation screen. The app sends the
+choice two ways, because of when the agent shows up in the room:
+
+- **Participant attribute `lang`** — set on connect and on every toggle. The
+  agent is dispatched from the participant's token, so it joins *after* the app
+  has connected and a data packet published at that moment is dropped.
+  Attributes are room state and travel with the participant info, so the agent
+  reads the language from them on join. Setting one needs the
+  `canUpdateOwnMetadata` grant on the voice-session token; without it the SDK
+  call silently does nothing.
+- **Data topic `agent_lang`** — a versioned envelope
+  (`{ v: 1, lang: "en" | "kn" }`). This is what makes a mid-call toggle take
+  effect, since the agent is already in the room by then.
+
+The agent's participant info can land slightly after `on_enter` begins, so the
+greeting waits (up to `LANGUAGE_GRACE_SECONDS`) for whichever of the two arrives
+first and then falls back to English. On either path the agent switches the TTS
+language (`session.tts.update_options(language=...)`, which the inference TTS
+snapshots per utterance) and the LLM instructions
+(`agent.update_instructions(...)`), then greets in the chosen language. STT
+stays on Gemini auto-detect so the senior can speak either language regardless
+of the toggle.
 
