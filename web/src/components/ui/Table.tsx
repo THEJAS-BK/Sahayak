@@ -41,10 +41,11 @@ export const TableHeader: React.FC<{ children: React.ReactNode }> = ({ children 
 export const TableCell: React.FC<{
   children: React.ReactNode;
   style?: React.CSSProperties;
+  colSpan?: number;
   onClick?: (event: React.MouseEvent<HTMLTableCellElement>) => void;
-}> = ({ children, style, onClick }) => {
+}> = ({ children, style, colSpan, onClick }) => {
   return (
-    <td onClick={onClick} style={{ padding: '1rem', color: 'var(--color-text-primary)', fontSize: '0.875rem', ...style }}>
+    <td colSpan={colSpan} onClick={onClick} style={{ padding: '1rem', color: 'var(--color-text-primary)', fontSize: '0.875rem', ...style }}>
       {children}
     </td>
   );
