@@ -3,7 +3,7 @@ import 'dart:convert';
 /// Non-UI helper for the structured help-request payload the LiveKit voice
 /// agent publishes on the `sahayak_request` data channel.
 ///
-/// Contract: see `plans/voice-structured-output.md`. The agent emits a
+/// Contract: see `plans/voice-integration.md`. The agent emits a
 /// versioned envelope; this class parses it (legacy bare payloads are still
 /// accepted) and produces the exact body for `Q-01 POST /api/requests`.
 class VoicePayloadException implements Exception {

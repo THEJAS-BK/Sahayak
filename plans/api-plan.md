@@ -1,8 +1,7 @@
 # API Plan
 
-> Status: **Implemented.** All contracts below are live and test-covered
-> (47 tests green). As-built deviations are logged in `decisions.md`; per-phase
-> completion is in `development-plan.md`.
+> Status: **Implemented.** All contracts below are live and test-covered. As-built
+> deviations are logged in `decisions.md`.
 
 Base path `/api`. JSON in/out. See §Conventions below, then the endpoint table,
 then the contracts that need pinning down.

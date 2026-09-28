@@ -1,8 +1,7 @@
 # Web police portal — page coverage
 
 Verified by reading the code on 2026-09-27, and updated as work landed. This
-supersedes the "no backend list endpoints" claim in `web-portal-api-connection.md`
-and gap 1 in `frontend-api-usage.md`, both of which were out of date.
+supersedes the earlier "no backend list endpoints" claim, which was out of date.
 
 ## Status
 
@@ -25,10 +24,9 @@ Everything except Monitoring and Map now has a real page behind a real endpoint.
 
 1. **"Emergencies has no backend list endpoint" was wrong.** E-02 and E-03 existed
    in `backend/src/modules/emergency/emergency.routes.ts:53` and `:66`, both
-   `requireRole('police')`, both covered by `tests/emergency.test.ts:68`. They
-   were added after `web-portal-api-connection.md` was written. The sidebar
-   carried the stale claim as a code comment and greyed-out nav items; both are
-   gone.
+   `requireRole('police')`, both covered by `tests/emergency.test.ts:68`. The
+   sidebar carried the stale claim as a code comment and greyed-out nav items;
+   both are gone.
 
 2. **The README has no `§2.3`.** A page-coverage table citing `/ route, §2.3`
    referred to section numbering that does not exist in the current `README.md`.

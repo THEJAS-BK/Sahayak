@@ -137,7 +137,7 @@ cd livekit-voice-agent && uv sync && uv run agent.py dev
 | Service | Port / URL |
 |---|---|
 | Backend API | `http://localhost:3000` (`/health`) |
-| Dev Postgres | `:5432` (PostgreSQL 18, role `postgres`) |
+| Database | Neon (pooled) — see `plans/pg-db-connection.md` |
 | Web portal (dev) | `http://localhost:5173` |
 | LiveKit (cloud) | `wss://<project>.livekit.cloud` (set in backend `.env`) |
 
@@ -154,7 +154,9 @@ cd livekit-voice-agent && uv sync && uv run agent.py dev
 ## 10. Where to look next
 
 - [workflow.md](workflow.md) — the end-to-end workflows.
+- `plans/README.md` — index of every plan doc.
+- `plans/runbook.md` — run commands, hand-dispatch rules, status table.
 - `plans/api-plan.md` — API contract details.
 - `plans/database-design.md`, `plans/architecture.md` — schema & modules.
 - `plans/voice-integration.md` — LiveKit voice integration notes.
-- `plans/web-portal-api-connection.md` — how the police portal was wired to the API.
+- `plans/web-portal-gaps.md` — which police-portal pages are actually built.
