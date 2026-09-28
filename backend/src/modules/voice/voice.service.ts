@@ -22,7 +22,20 @@ export async function createVoiceSession(userId: string): Promise<{ url: string;
 
   const room = `voice_${userId}_${Date.now()}`
   const at = new AccessToken(apiKey, apiSecret, { identity: userId, ttl: tokenTtlS })
-  at.addGrant({ roomJoin: true, room, canPublish: true, canSubscribe: true, canPublishData: true })
+  // canUpdateOwnMetadata lets the app carry its conversation-language choice as
+  // a participant attribute. The agent is dispatched from this token, so it
+  // joins after the app has connected and misses anything the app publishes on
+  // the data channel at that moment; attributes are room state and arrive with
+  // the participant info instead, so the agent greets in the chosen language
+  // without waiting for a toggle.
+  at.addGrant({
+    roomJoin: true,
+    room,
+    canPublish: true,
+    canSubscribe: true,
+    canPublishData: true,
+    canUpdateOwnMetadata: true,
+  })
   at.roomConfig = new RoomConfiguration({
     agents: [
       new RoomAgentDispatch({
