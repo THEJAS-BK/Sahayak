@@ -1,0 +1,9 @@
+@host = http://localhost:3000
+@seniorToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjpudWxsLCJpc19hY3RpdmUiOmZhbHNlLCJpYXQiOjE3ODk4MjY1ODUsImV4cCI6MTc4OTg1NTM4NSwiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6ImU1OTFkYzMyLTdjY2UtNDRmMC1iZjgyLWZjODM0YjNlZjA4OSJ9.9-ZpEHRsv-wA16pMOPcto4uw4Upjo3jicG1GoZPhuXs
+
+### Create voice session (any authenticated role) -> 200 { url, token, room }
+POST {{host}}/api/voice-sessions
+Authorization: Bearer {{seniorToken}}
+
+###! No token -> 401 UNAUTHENTICATED
+POST {{host}}/api/voice-sessions

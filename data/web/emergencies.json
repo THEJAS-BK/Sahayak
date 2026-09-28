@@ -1,0 +1,79 @@
+{
+  "list": [
+    {
+      "id": "evt-0001",
+      "created_at": "2026-09-17T18:41:00Z",
+      "senior": { "id": "sen-0001", "full_name": "Anitha Devi" },
+      "trigger_type": "acoustic_distress",
+      "source": "voice_agent",
+      "help_request_id": "req-1024",
+      "latitude": 13.161,
+      "longitude": 74.883,
+      "detail": { "keywords": ["help", "pain", "alone"] },
+      "escalated_to_112": true,
+      "escalated_at": "2026-09-17T18:41:00Z",
+      "status": "LOGGED",
+      "reviewed_at": null
+    },
+    {
+      "id": "evt-0002",
+      "created_at": "2026-09-12T08:16:00Z",
+      "senior": { "id": "sen-0003", "full_name": "Ravi Kumar" },
+      "trigger_type": "semantic_llm",
+      "source": "voice_agent",
+      "help_request_id": "req-1010",
+      "latitude": 13.3522,
+      "longitude": 74.7928,
+      "detail": { "intent": "medical_emergency", "confidence": 0.92 },
+      "escalated_to_112": true,
+      "escalated_at": "2026-09-12T08:16:00Z",
+      "status": "REVIEWED",
+      "reviewed_at": "2026-09-12T09:10:00Z",
+      "reviewed_by": { "id": "pol-0001", "full_name": "Officer Ashok Kini" }
+    },
+    {
+      "id": "evt-0003",
+      "created_at": "2026-09-15T20:05:00Z",
+      "senior": { "id": "sen-0004", "full_name": "Meenakshi Bhat" },
+      "trigger_type": "keyword_repetition",
+      "source": "flutter_app",
+      "help_request_id": null,
+      "latitude": null,
+      "longitude": null,
+      "detail": { "repeat_phrase": "please help" },
+      "escalated_to_112": true,
+      "escalated_at": "2026-09-15T20:05:00Z",
+      "status": "LOGGED",
+      "reviewed_at": null
+    }
+  ],
+  "detail": {
+    "id": "evt-0001",
+    "created_at": "2026-09-17T18:41:00Z",
+    "senior": { "id": "sen-0001", "full_name": "Anitha Devi", "phone_number": "+919876500001" },
+    "trigger_type": "acoustic_distress",
+    "source": "voice_agent",
+    "help_request_id": "req-1024",
+    "latitude": 13.161,
+    "longitude": 74.883,
+    "detail": { "keywords": ["help", "pain", "alone"] },
+    "escalated_to_112": true,
+    "escalated_at": "2026-09-17T18:41:00Z",
+    "status": "LOGGED",
+    "reviewed_at": null,
+    "linked_request": {
+      "id": "req-1024",
+      "category": "grocery_assistance",
+      "status": "IN_PROGRESS"
+    }
+  },
+  "mark_as_reviewed": {
+    "method": "PATCH",
+    "path": "/api/police/emergency-events/evt-0001",
+    "body": { "status": "REVIEWED" },
+    "response": {
+      "success": true,
+      "data": { "event_id": "evt-0001", "status": "REVIEWED", "reviewed_at": "2026-09-17T20:30:00Z" }
+    }
+  }
+}

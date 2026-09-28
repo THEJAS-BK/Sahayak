@@ -1,14 +1,23 @@
 import React from 'react';
-import { LayoutDashboard, Users, AlertTriangle, ShieldCheck, Settings, LogOut } from 'lucide-react';
-import { NavLink } from 'react-router-dom';
+import { LayoutDashboard, Users, AlertTriangle, ShieldCheck, Settings, LogOut, ListChecks, ScrollText } from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { clearSession } from '../../api/client';
 
 export const Sidebar: React.FC = () => {
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    clearSession();
+    navigate('/login', { replace: true });
+  };
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
+    { icon: ListChecks, label: 'Requests', path: '/requests' },
     { icon: ShieldCheck, label: 'Verification', path: '/verification' },
     { icon: AlertTriangle, label: 'Emergencies', path: '/emergencies' },
     { icon: Users, label: 'Seniors', path: '/seniors' },
     { icon: Users, label: 'Volunteers', path: '/volunteers' },
+    { icon: ScrollText, label: 'Audit Logs', path: '/audit-logs' },
   ];
 
   return (
@@ -42,6 +51,7 @@ export const Sidebar: React.FC = () => {
               borderRadius: '0.375rem',
               backgroundColor: isActive ? 'var(--color-primary-navy-hover)' : 'transparent',
               color: isActive ? '#FFFFFF' : '#94A3B8',
+              cursor: 'pointer',
               textDecoration: 'none',
               fontWeight: 500,
               transition: 'all 0.2s',
@@ -61,13 +71,14 @@ export const Sidebar: React.FC = () => {
           <Settings size={20} />
           Settings
         </a>
-        <a href="#" style={{
+        <button onClick={handleLogout} style={{
             display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-            color: '#94A3B8', textDecoration: 'none', fontWeight: 500
+            color: '#94A3B8', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500,
+            fontFamily: 'inherit', textAlign: 'left', fontSize: '1rem' as const, width: '100%',
         }}>
           <LogOut size={20} />
           Logout
-        </a>
+        </button>
       </div>
     </aside>
   );

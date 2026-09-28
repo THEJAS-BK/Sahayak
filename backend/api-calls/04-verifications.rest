@@ -1,0 +1,52 @@
+@host = http://localhost:3000
+@policeToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9saWNlIiwiaXNfYWN0aXZlIjp0cnVlLCJpYXQiOjE3ODk4MjY2MjAsImV4cCI6MTc4OTg1NTQyMCwiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6IjA1Yjg4YmYwLTYwMGYtNGRlOS1hY2E1LTNiNWViZDYzODQ3ZiJ9._9Cnacza0_WCeMQLp2dsQEC_zsA1IisnJLAkEKZ3AOA
+@seniorToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjpudWxsLCJpc19hY3RpdmUiOmZhbHNlLCJpYXQiOjE3ODk4MjY1ODUsImV4cCI6MTc4OTg1NTM4NSwiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6ImU1OTFkYzMyLTdjY2UtNDRmMC1iZjgyLWZjODM0YjNlZjA4OSJ9.9-ZpEHRsv-wA16pMOPcto4uw4Upjo3jicG1GoZPhuXs
+@verificationId =9c065ce8-95a2-4845-87f3-e9f53c5bed14
+
+###! V-01 List pending verifications
+GET {{host}}/api/verifications?status=PENDING&limit=10
+Authorization: Bearer {{policeToken}}
+
+###! V-01 List approved verifications
+GET {{host}}/api/verifications?status=APPROVED&limit=10
+Authorization: Bearer {{policeToken}}
+
+### V-01 List rejected verifications
+GET {{host}}/api/verifications?status=REJECTED&limit=10
+Authorization: Bearer {{policeToken}}
+
+###! V-02Get verification detail
+GET {{host}}/api/verifications/{{verificationId}}
+Authorization: Bearer {{policeToken}}
+
+### V-03 Approve a verification
+PATCH {{host}}/api/verifications/{{verificationId}}
+Authorization: Bearer {{policeToken}}
+Content-Type: application/json
+
+{
+  "status": "APPROVED"
+}
+
+### V-03 Reject a verification with reason
+PATCH {{host}}/api/verifications/{{verificationId}}
+Authorization: Bearer {{policeToken}}
+Content-Type: application/json
+
+{
+  "status": "REJECTED",
+  "reason": "Aadhaar details could not be verified"
+}
+
+### V-03 Invalid status -> 400
+PATCH {{host}}/api/verifications/{{verificationId}}
+Authorization: Bearer {{policeToken}}
+Content-Type: application/json
+
+{
+  "status": "PENDING"
+}
+
+### Non-police cannot list verifications -> 403
+GET {{host}}/api/verifications?status=PENDING
+Authorization: Bearer {{seniorToken}}

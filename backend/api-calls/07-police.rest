@@ -1,0 +1,50 @@
+@host = http://localhost:3000
+@policeToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9saWNlIiwiaXNfYWN0aXZlIjp0cnVlLCJpYXQiOjE3ODk4MjY2MjAsImV4cCI6MTc4OTg1NTQyMCwiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6IjA1Yjg4YmYwLTYwMGYtNGRlOS1hY2E1LTNiNWViZDYzODQ3ZiJ9._9Cnacza0_WCeMQLp2dsQEC_zsA1IisnJLAkEKZ3AOA
+@seniorToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjpudWxsLCJpc19hY3RpdmUiOmZhbHNlLCJpYXQiOjE3ODk4MjY1ODUsImV4cCI6MTc4OTg1NTM4NSwiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6ImU1OTFkYzMyLTdjY2UtNDRmMC1iZjgyLWZjODM0YjNlZjA4OSJ9.9-ZpEHRsv-wA16pMOPcto4uw4Upjo3jicG1GoZPhuXs
+@emergencyId = 18b3007c-d5e5-47e8-9a2c-18911c30011d
+
+### P-01 Live request view (police) - all
+GET {{host}}/api/police/requests
+Authorization: Bearer {{policeToken}}
+
+### P-01 Filter by status and priority
+GET {{host}}/api/police/requests?status=PENDING&priority=urgent
+Authorization: Bearer {{policeToken}}
+
+### P-01 Filter by time range
+GET {{host}}/api/police/requests?from=2025-01-01T00:00:00Z&to=2026-12-31T23:59:59Z&limit=50
+Authorization: Bearer {{policeToken}}
+
+### P-01 Invalid query param -> 400
+GET {{host}}/api/police/requests?status=INVALID_STATUS
+Authorization: Bearer {{policeToken}}
+
+### P-01 Role guard: senior cannot access -> 403
+GET {{host}}/api/police/requests
+Authorization: Bearer {{seniorToken}}
+
+### E-02 List emergency events (police)
+GET {{host}}/api/police/emergency-events
+Authorization: Bearer {{policeToken}}
+
+### E-02 Filter logged events
+GET {{host}}/api/police/emergency-events?status=LOGGED
+Authorization: Bearer {{policeToken}}
+
+### E-03 Review emergency event (mark REVIEWED)
+PATCH {{host}}/api/police/emergency-events/{{emergencyId}}
+Authorization: Bearer {{policeToken}}
+Content-Type: application/json
+
+{
+  "status": "REVIEWED"
+}
+
+### E-03 Already reviewed -> 409
+PATCH {{host}}/api/police/emergency-events/{{emergencyId}}
+Authorization: Bearer {{policeToken}}
+Content-Type: application/json
+
+{
+  "status": "REVIEWED"
+}

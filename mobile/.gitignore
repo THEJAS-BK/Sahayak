@@ -28,11 +28,19 @@ ios/.symlinks/
 ios/Flutter/ephemeral/
 ios/Flutter/Generated.xcconfig
 ios/Flutter/flutter_export_environment.sh
+ios/**/*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+ios/**/*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+ios/**/*.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+ios/**/*.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
 
 # macOS
 macos/Pods/
 macos/Flutter/ephemeral/
 macos/Flutter/Generated.xcconfig
+macos/**/*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+macos/**/*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+macos/**/*.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+macos/**/*.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
 
 # Web
 web/flutter_service_worker.js

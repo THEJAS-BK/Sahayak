@@ -26,8 +26,8 @@ export const TableBody: React.FC<{ children: React.ReactNode }> = ({ children })
   return <tbody>{children}</tbody>;
 };
 
-export const TableRow: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }> = ({ children, style }) => {
-  return <tr style={{ borderBottom: '1px solid var(--color-border)', ...style }}>{children}</tr>;
+export const TableRow: React.FC<{ children: React.ReactNode; style?: React.CSSProperties; onClick?: () => void }> = ({ children, style, onClick }) => {
+  return <tr onClick={onClick} style={{ borderBottom: '1px solid var(--color-border)', ...style }}>{children}</tr>;
 };
 
 export const TableHeader: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -38,9 +38,13 @@ export const TableHeader: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 };
 
-export const TableCell: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }> = ({ children, style }) => {
+export const TableCell: React.FC<{
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+  onClick?: (event: React.MouseEvent<HTMLTableCellElement>) => void;
+}> = ({ children, style, onClick }) => {
   return (
-    <td style={{ padding: '1rem', color: 'var(--color-text-primary)', fontSize: '0.875rem', ...style }}>
+    <td onClick={onClick} style={{ padding: '1rem', color: 'var(--color-text-primary)', fontSize: '0.875rem', ...style }}>
       {children}
     </td>
   );

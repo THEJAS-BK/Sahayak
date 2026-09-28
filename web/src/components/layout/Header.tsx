@@ -1,7 +1,17 @@
-import React from 'react';
-import { Bell, User } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Bell, Search, User } from 'lucide-react';
+import { fetchCurrentUser } from '../../api/client';
+import type { CurrentUser } from '../../api/types';
 
 export const Header: React.FC = () => {
+  const [user, setUser] = useState<CurrentUser | null>(null);
+
+  useEffect(() => {
+    fetchCurrentUser()
+      .then((me) => setUser(me))
+      .catch(() => setUser(null));
+  }, []);
+
   return (
     <header
       style={{
@@ -49,23 +59,8 @@ export const Header: React.FC = () => {
           }}
         >
           <div style={{ textAlign: 'right' }}>
-            <div
-              style={{
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              Admin User
-            </div>
-            <div
-              style={{
-                fontSize: '0.75rem',
-                color: 'var(--color-text-secondary)',
-              }}
-            >
-              Station HQ
-            </div>
+            <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-text-primary)' }}>{user?.email ?? 'Police Officer'}</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>Station HQ</div>
           </div>
 
           <div

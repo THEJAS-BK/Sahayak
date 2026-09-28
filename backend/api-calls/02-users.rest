@@ -1,0 +1,42 @@
+@host = http://localhost:3000
+@seniorToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjpudWxsLCJpc19hY3RpdmUiOmZhbHNlLCJpYXQiOjE3ODk4MjY1ODUsImV4cCI6MTc4OTg1NTM4NSwiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6ImU1OTFkYzMyLTdjY2UtNDRmMC1iZjgyLWZjODM0YjNlZjA4OSJ9.9-ZpEHRsv-wA16pMOPcto4uw4Upjo3jicG1GoZPhuXs
+@volunteerToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjpudWxsLCJpc19hY3RpdmUiOmZhbHNlLCJpYXQiOjE3ODk4MjY2MDMsImV4cCI6MTc4OTg1NTQwMywiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6IjIyYTAwYWJjLThmNmEtNDUxNi05ZjA1LWY3MWYyODcyMTlhYiJ9.Fyv-agA5WVHxiRZki550UgqdV8R0rfoXfyQ9dlSrsxg
+@policeToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9saWNlIiwiaXNfYWN0aXZlIjp0cnVlLCJpYXQiOjE3ODk4MjY2MjAsImV4cCI6MTc4OTg1NTQyMCwiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6IjA1Yjg4YmYwLTYwMGYtNGRlOS1hY2E1LTNiNWViZDYzODQ3ZiJ9._9Cnacza0_WCeMQLp2dsQEC_zsA1IisnJLAkEKZ3AOA
+
+###! Get current user (senior)
+GET {{host}}/api/me
+Authorization: Bearer {{seniorToken}}
+
+###! Get current user (volunteer)
+GET {{host}}/api/me
+Authorization: Bearer {{volunteerToken}}
+
+### Update FCM token (senior)
+PATCH {{host}}/api/me/fcm-token
+Authorization: Bearer {{seniorToken}}
+Content-Type: application/json
+
+{
+  "fcm_token": "test-fcm-token-senior-001"
+}
+
+### Update FCM token (volunteer)
+PATCH {{host}}/api/me/fcm-token
+Authorization: Bearer {{volunteerToken}}
+Content-Type: application/json
+
+{
+  "fcm_token": "test-fcm-token-volunteer-001"
+}
+
+### /me without token -> 401
+GET {{host}}/api/me
+
+### fcm-token with police role -> 403
+PATCH {{host}}/api/me/fcm-token
+Authorization: Bearer {{policeToken}}
+Content-Type: application/json
+
+{
+  "fcm_token": "test-fcm-token-police-001"
+}

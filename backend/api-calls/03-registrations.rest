@@ -1,0 +1,61 @@
+@host = http://localhost:3000
+@seniorToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjpudWxsLCJpc19hY3RpdmUiOmZhbHNlLCJpYXQiOjE3ODk4MjY1ODUsImV4cCI6MTc4OTg1NTM4NSwiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6ImU1OTFkYzMyLTdjY2UtNDRmMC1iZjgyLWZjODM0YjNlZjA4OSJ9.9-ZpEHRsv-wA16pMOPcto4uw4Upjo3jicG1GoZPhuXs
+@volunteerToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjpudWxsLCJpc19hY3RpdmUiOmZhbHNlLCJpYXQiOjE3ODk4MjY2MDMsImV4cCI6MTc4OTg1NTQwMywiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6IjIyYTAwYWJjLThmNmEtNDUxNi05ZjA1LWY3MWYyODcyMTlhYiJ9.Fyv-agA5WVHxiRZki550UgqdV8R0rfoXfyQ9dlSrsxg
+@lat = 12.9141
+@lng = 74.8560
+
+### R-01 Submit senior registration form -> 201 (PENDING verification)
+POST {{host}}/api/registrations/senior
+Authorization: Bearer {{seniorToken}}
+Content-Type: application/json
+
+{
+  "full_name": "one",
+  "phone_number": "+919845211476",
+  "home_latitude": {{lat}},
+  "home_longitude": {{lng}},
+  "preferred_language": "kannada",
+  "aadhaar_number": "331276549018",
+  "emergency_contact": {
+    "name": "Pooja Pai",
+    "phone": "+919845211477",
+    "relation": "daughter"
+  }
+}
+
+### R-02 Submit volunteer registration form -> 201 (PENDING verification)
+POST {{host}}/api/registrations/volunteer
+Authorization: Bearer {{volunteerToken}}
+Content-Type: application/json
+
+{
+  "full_name": "Meena Sher",
+  "phone_number": "+919845211478",
+  "organization": "Helping Hands NGO",
+  "skills": ["first_aid", "medical_transport", "daily_errands"],
+  "base_latitude": {{lat}},
+  "base_longitude": {{lng}},
+  "aadhaar_number": "884415067223"
+}
+
+### R-01 Duplicate PENDING submission -> 409 ROLE_OR_VERIFICATION_*
+POST {{host}}/api/registrations/senior
+Authorization: Bearer {{seniorToken}}
+Content-Type: application/json
+
+{
+  "full_name": "Raghavendra Pai",
+  "phone_number": "+919845211476",
+  "home_latitude": {{lat}},
+  "home_longitude": {{lng}},
+  "preferred_language": "kannada",
+  "aadhaar_number": "331276549018"
+}
+
+###! R-03 Poll verification status (senior)
+GET {{host}}/api/registrations/me
+Authorization: Bearer {{seniorToken}}
+
+###! R-03 Poll verification status (volunteer)
+GET {{host}}/api/registrations/me
+Authorization: Bearer {{volunteerToken}}

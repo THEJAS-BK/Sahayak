@@ -1,0 +1,26 @@
+name: sahayak_mobile
+description: Sahayak mobile app (Senior Citizen & Volunteer flows)
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  http: ^1.2.0
+  permission_handler: ^11.3.0
+  shared_preferences: ^2.3.0
+  livekit_client: ^2.13.0
+  flutter_secure_storage: ^11.2.0
+  url_launcher: ^6.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

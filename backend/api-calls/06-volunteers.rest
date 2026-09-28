@@ -1,0 +1,49 @@
+@host = http://localhost:3000
+@volunteerToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjpudWxsLCJpc19hY3RpdmUiOmZhbHNlLCJpYXQiOjE3ODk4MjY2MDMsImV4cCI6MTc4OTg1NTQwMywiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6IjIyYTAwYWJjLThmNmEtNDUxNi05ZjA1LWY3MWYyODcyMTlhYiJ9.Fyv-agA5WVHxiRZki550UgqdV8R0rfoXfyQ9dlSrsxg
+
+### L-01 Update volunteer location (requires active assignment)
+PATCH {{host}}/api/volunteers/me/location
+Authorization: Bearer {{volunteerToken}}
+Content-Type: application/json
+
+{
+  "latitude": 12.9200,
+  "longitude": 74.8620
+}
+
+### L-02 Set volunteer available
+PATCH {{host}}/api/volunteers/me/availability
+Authorization: Bearer {{volunteerToken}}
+Content-Type: application/json
+
+{
+  "is_available": true
+}
+
+### L-02 Set volunteer unavailable
+PATCH {{host}}/api/volunteers/me/availability
+Authorization: Bearer {{volunteerToken}}
+Content-Type: application/json
+
+{
+  "is_available": false
+}
+
+### L-02 Invalid payload -> 400
+PATCH {{host}}/api/volunteers/me/availability
+Authorization: Bearer {{volunteerToken}}
+Content-Type: application/json
+
+{
+  "is_available": "not-a-bool"
+}
+
+### L-01 Invalid payload -> 400
+PATCH {{host}}/api/volunteers/me/location
+Authorization: Bearer {{volunteerToken}}
+Content-Type: application/json
+
+{
+  "latitude": 200,
+  "longitude": 74.8620
+}

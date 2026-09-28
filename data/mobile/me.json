@@ -1,0 +1,43 @@
+{
+  "senior": {
+    "id": "sen-0001",
+    "email": "anitha.dev@example.com",
+    "role": "senior",
+    "is_active": true,
+    "verification_status": "APPROVED",
+    "full_name": "Anitha Devi",
+    "phone_number": "+919876500001",
+    "home_latitude": 13.161,
+    "home_longitude": 74.883,
+    "preferred_language": "kannada",
+    "emergency_contact": {
+      "name": "Ramesh Devi",
+      "phone": "+919876500011",
+      "relation": "son"
+    }
+  },
+  "volunteer": {
+    "id": "vol-0001",
+    "email": "karthik.shetty@example.com",
+    "role": "volunteer",
+    "is_active": true,
+    "verification_status": "APPROVED",
+    "full_name": "Karthik Shetty",
+    "phone_number": "+919876500021",
+    "organization": "Udupi Red Cross",
+    "skills": ["nursing", "first_aid"],
+    "base_latitude": 13.3522,
+    "base_longitude": 74.7928,
+    "club_id": "CLUB-UD-001",
+    "is_available": true,
+    "current_latitude": 13.3486,
+    "current_longitude": 74.7859,
+    "location_updated_at": "2026-09-17T18:58:00Z",
+    "active_request": {
+      "id": "req-1024",
+      "category": "grocery_assistance",
+      "status": "IN_PROGRESS",
+      "senior": { "id": "sen-0001", "full_name": "Anitha Devi" }
+    }
+  }
+}

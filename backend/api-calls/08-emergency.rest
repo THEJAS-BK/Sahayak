@@ -1,0 +1,65 @@
+@host = http://localhost:3000
+@seniorToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjpudWxsLCJpc19hY3RpdmUiOmZhbHNlLCJpYXQiOjE3ODk4MjY1ODUsImV4cCI6MTc4OTg1NTM4NSwiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6ImU1OTFkYzMyLTdjY2UtNDRmMC1iZjgyLWZjODM0YjNlZjA4OSJ9.9-ZpEHRsv-wA16pMOPcto4uw4Upjo3jicG1GoZPhuXs
+@volunteerToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjpudWxsLCJpc19hY3RpdmUiOmZhbHNlLCJpYXQiOjE3ODk4MjY2MDMsImV4cCI6MTc4OTg1NTQwMywiYXVkIjoic2FoYXlhayIsImlzcyI6InNhaGF5YWstYmFja2VuZCIsInN1YiI6IjIyYTAwYWJjLThmNmEtNDUxNi05ZjA1LWY3MWYyODcyMTlhYiJ9.Fyv-agA5WVHxiRZki550UgqdV8R0rfoXfyQ9dlSrsxg
+@requestId = <paste-request-id>
+@lat = 12.9141
+@lng = 74.8560
+
+### E-01 Log emergency event (senior) -> 201
+POST {{host}}/api/emergency-events
+Authorization: Bearer {{seniorToken}}
+Content-Type: application/json
+
+{
+  "trigger_type": "semantic_llm",
+  "source": "voice_agent",
+  "latitude": {{lat}},
+  "longitude": {{lng}}
+}
+
+### E-01 Emergency linked to a help request
+POST {{host}}/api/emergency-events
+Authorization: Bearer {{seniorToken}}
+Content-Type: application/json
+
+{
+  "trigger_type": "acoustic_distress",
+  "source": "flutter_app",
+  "help_request_id": "{{requestId}}",
+  "latitude": {{lat}},
+  "longitude": {{lng}}
+}
+
+### E-01 Keyword repetition trigger
+POST {{host}}/api/emergency-events
+Authorization: Bearer {{seniorToken}}
+Content-Type: application/json
+
+{
+  "trigger_type": "keyword_repetition",
+  "source": "voice_agent",
+  "detail": {
+    "repeated_phrase": "help me help me",
+    "times": 5
+  }
+}
+
+### E-01 Invalid trigger_type -> 400
+POST {{host}}/api/emergency-events
+Authorization: Bearer {{seniorToken}}
+Content-Type: application/json
+
+{
+  "trigger_type": "unknown_trigger",
+  "source": "voice_agent"
+}
+
+### E-01 Role guard: volunteer cannot log emergency -> 403
+POST {{host}}/api/emergency-events
+Authorization: Bearer {{volunteerToken}}
+Content-Type: application/json
+
+{
+  "trigger_type": "semantic_llm",
+  "source": "flutter_app"
+}
