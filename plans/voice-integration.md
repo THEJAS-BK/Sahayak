@@ -5,7 +5,7 @@ Goal: senior taps a mic button in the Flutter app → live voice conversation wi
 ## Scope
 
 1. **Backend** — `POST /api/voice-sessions` issues a short-TTL LiveKit join token to an authenticated user.
-2. **Voice agent** — run in worker mode (`uv run agent.py dev`); no pipeline changes. Dispatch is not free: the token must request the agent, and the worker must register under the same name. See "Automatic dispatch" in `plans/real-data-and-voice-readiness.md`.
+2. **Voice agent** — run in worker mode (`uv run agent.py dev`); no pipeline changes. Dispatch is not free: the token must request the agent, and the worker must register under the same name. See "The dispatch gotcha" in the appendix below.
 3. **Flutter** — real email+OTP login (to obtain a JWT), then a mic/call button that connects to LiveKit.
 
 Repo facts that shaped this design:
@@ -202,8 +202,8 @@ and `source: "voice_agent"`, then `POST /api/requests`.
   data channel → app POST → backend print (needs agent running + emulator).
 ### Structured output (v1)
 
-See `plans/voice-structured-output.md` for the current envelope contract and the
-agent -> app -> backend pipeline. The live flow uses the versioned envelope
+The envelope contract and the agent -> app -> backend pipeline are described
+below. The live flow uses the versioned envelope
 (`{ v, type, request_id, request }`) parsed by `mobile/lib/services/voice_payload.dart`,
 with the app injecting the senior's real `latitude`/`longitude` from `GET /api/me`
 and `source: "voice_agent"` before `POST /api/requests`.
@@ -219,4 +219,48 @@ and `source: "voice_agent"` before `POST /api/requests`.
 - The full room session producing the `sahayak_request` envelope is still
   unobserved, because every attempt so far used synthesised audio rather than a
   live microphone. This is the one open item.
+
+## Appendix — why the backend only mints a token
+
+The backend's entire responsibility is minting a join token.
+
+1. App authenticates, calls `POST /api/voice-sessions`.
+2. Backend returns `{ url, token, room }` and nothing else. It does not create a
+   room, does not call LiveKit's room API, and does not dispatch an agent.
+3. App joins the room itself. The agent is already on its way.
+4. Agent publishes the structured envelope on the `sahayak_request` data topic.
+5. App renders a review dialog, and the app — not the agent — performs
+   `POST /api/requests` with the senior's own coordinates.
+
+Keeping the write on the app side means the request carries the authenticated
+user's identity and location, and nothing reaches the database without a
+confirmation tap.
+
+### The dispatch gotcha
+
+With plain `AccessToken` grants the agent was never dispatched: the client
+connected and sat in an empty room. Dispatch is requested *in the token*:
+
+```ts
+token.roomConfig = {
+  agents: [new RoomAgentDispatch({ agentName: config.livekit.agentName })],
+};
+```
+
+The worker must also register under that same name. LiveKit reads it from the
+environment, not from the `AgentServer(...)` constructor:
+
+```bash
+LIVEKIT_AGENT_NAME=sahayak   # livekit-voice-agent/.env
+```
+
+With both halves in place the agent joins the room on the first connection.
+
+### Provider keys
+
+`agent.py` names models as strings (`assemblyai/universal-streaming:en`,
+`openai/gpt-4o-mini`, `cartesia/sonic-2`). The SDK resolves these to
+`livekit.agents.inference.*` and routes them through the LiveKit inference
+gateway using the existing `LIVEKIT_API_KEY`. There are no AssemblyAI, OpenAI or
+Cartesia plugin packages to install and no separate API keys to configure.
 

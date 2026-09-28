@@ -86,7 +86,5 @@ Recorded so nobody re-derives them from the plans.
 ## Drift against the plan docs
 
 - `client-design/mobile-app.md` §12 lists 11 pages; the app now has 16.
-- `web-portal-api-connection.md` lists 7 endpoints; the code now uses 9 (P-04 and
-  P-05 were added later — see `api-plan.md`).
 - `client-design/web-portal.md` §18 route structure is still aspirational; the
   live routes are the five in the table above.

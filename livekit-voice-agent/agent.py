@@ -15,7 +15,7 @@ load_dotenv()
 # Topic the app listens on for structured help requests
 TOPIC_HELP_REQUEST = "sahayak_request"
 
-# Envelope schema version (see plans/voice-structured-output.md)
+# Envelope schema version (see plans/voice-integration.md)
 PAYLOAD_VERSION = 1
 
 # Help request contract (mirrors backend createSchema Q-01)

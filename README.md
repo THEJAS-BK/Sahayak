@@ -14,9 +14,10 @@ with volunteers and local emergency services.
 | `data/` | Hand-curated dummy payloads | JSON | Mirrors `plans/api-plan.md` contracts |
 
 Plans, architecture and run cookbooks live in `plans/`. Start with
+[`plans/README.md`](plans/README.md) for the index, then
 [`plans/complete-context/`](plans/complete-context/README.md) for a full picture
-of the system and its workflows, or [`plans/scaffolding.md`](plans/scaffolding.md)
-for the original setup plan.
+of the system and its workflows, or [`plans/runbook.md`](plans/runbook.md) to
+get it running.
 
 ## Backend
 
