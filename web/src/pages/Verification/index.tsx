@@ -64,11 +64,19 @@ export const Verification: React.FC = () => {
     return matchesTab && matchesSearch;
   });
 
+  const pending = mockVerifications.filter((v) => v.status === 'PENDING').length;
+  const approved = mockVerifications.filter((v) => v.status === 'APPROVED').length;
+  const rejected = mockVerifications.filter((v) => v.status === 'REJECTED').length;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <div>
-        <h1 style={{ fontSize: '1.875rem', fontWeight: 700, margin: '0 0 0.5rem 0' }}>Verification Queue</h1>
-        <p style={{ color: 'var(--color-text-secondary)', margin: 0 }}>Review and approve senior and volunteer registrations.</p>
+        <h1 style={{ fontSize: '1.875rem', fontWeight: 700, margin: 0 }}>
+          Identity Verifications
+        </h1>
+        <p style={{ color: 'var(--color-text-secondary)', margin: '0.4rem 0 0' }}>
+          Review senior citizen registrations and volunteer character verifications.
+        </p>
       </div>
 
       {error && (
@@ -102,25 +110,80 @@ export const Verification: React.FC = () => {
               Volunteers
             </Button>
           </div>
+        </Card>
 
-          <div style={{ position: 'relative', width: '250px' }}>
-            <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-secondary)' }} />
-            <input
-              type="text"
-              placeholder="Search by name..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.5rem 0.5rem 0.5rem 2.25rem',
-                borderRadius: '0.375rem',
-                border: '1px solid var(--color-border)',
-                outline: 'none',
-                fontFamily: 'inherit',
-                fontSize: '0.875rem',
-              }}
-            />
+        <Card style={{ padding: '1rem 1.25rem' }}>
+          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
+            Rejected / Returned
           </div>
+          <div style={{ fontSize: '2rem', fontWeight: 700, marginTop: '0.35rem' }}>
+            {rejected}
+          </div>
+        </Card>
+
+        <Card style={{ padding: '1rem 1.25rem' }}>
+          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>
+            Total Submissions
+          </div>
+          <div style={{ fontSize: '2rem', fontWeight: 700, marginTop: '0.35rem' }}>
+            {mockVerifications.length}
+          </div>
+        </Card>
+      </div>
+
+      <Card>
+        <div
+          style={{
+            padding: '1rem',
+            borderBottom: '1px solid var(--color-border)',
+            display: 'flex',
+            gap: '0.75rem',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          <input
+            type="text"
+            placeholder="Search by applicant name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              flex: 1,
+              minWidth: '220px',
+              padding: '0.55rem 0.75rem',
+              border: '1px solid var(--color-border)',
+              borderRadius: '0.375rem',
+              fontFamily: 'inherit',
+            }}
+          />
+
+          <Button
+            variant={activeTab === 'All' ? 'primary' : 'ghost'}
+            size="sm"
+            onClick={() => setActiveTab('All')}
+          >
+            All Types
+          </Button>
+
+          <Button
+            variant={activeTab === 'Senior' ? 'primary' : 'ghost'}
+            size="sm"
+            onClick={() => setActiveTab('Senior')}
+          >
+            Seniors
+          </Button>
+
+          <Button
+            variant={activeTab === 'Volunteer' ? 'primary' : 'ghost'}
+            size="sm"
+            onClick={() => setActiveTab('Volunteer')}
+          >
+            Volunteers
+          </Button>
+
+          <Button variant="outline" size="sm">
+            Export Log
+          </Button>
         </div>
 
         {loading && (
