@@ -108,6 +108,19 @@ Authorization: Bearer {{seniorToken}}
 GET {{host}}/api/requests/{{requestId}}/volunteer
 Authorization: Bearer {{seniorToken}}
 
+### Q-09 Attach a photo (senior, own request, multipart)
+# The image is streamed straight to Cloudinary; only the URL is stored. Unlike
+# every other call here this one is multipart, so there is no Content-Type
+# header to set by hand and `photo` must be a real file on disk.
+POST {{host}}/api/requests/{{requestId}}/photo
+Authorization: Bearer {{seniorToken}}
+
+### Read the photo back
+# There is no image endpoint to GET: the URL is returned as `image_url` on every
+# request payload (Q-02, Q-03, Q-04, P-01) alongside `has_photo`.
+GET {{host}}/api/requests/{{requestId}}
+Authorization: Bearer {{seniorToken}}
+
 ### Role guard: volunteer cannot create requests -> 403
 POST {{host}}/api/requests
 Authorization: Bearer {{volunteerToken}}

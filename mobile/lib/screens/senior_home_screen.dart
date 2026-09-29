@@ -2,16 +2,12 @@ import 'package:flutter/material.dart';
 import '../models/help_request.dart';
 import '../services/api_client.dart';
 import '../services/emergency_service.dart';
-import '../services/profile_service.dart';
 import '../services/requests_service.dart';
-import '../services/session_service.dart';
-import '../services/user_session.dart';
 import '../theme/app_colors.dart';
 import '../widgets/sahayak_app_bar.dart';
 import '../widgets/primary_button.dart';
 import '../widgets/status_badge.dart';
 import 'agent_conversation_screen.dart';
-import 'create_login_screen.dart';
 import 'my_requests_screen.dart';
 import 'senior_my_requests_screen.dart';
 import 'senior_profile_screen.dart';
@@ -151,18 +147,6 @@ class _SeniorHomeScreenState extends State<SeniorHomeScreen>
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const AgentConversationScreen()),
-    );
-  }
-
-  void _logout(BuildContext context) async {
-    await SessionService.instance.clear();
-    ProfileService.instance.clearCache();
-    await UserSession.clear();
-    if (!context.mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const CreateLoginScreen()),
-      (route) => false,
     );
   }
 
@@ -385,15 +369,6 @@ class _SeniorHomeScreenState extends State<SeniorHomeScreen>
                     builder: (_) => const SeniorMyRequestsScreen(),
                   ),
                 ),
-              ),
-
-              const SizedBox(height: 10),
-
-              PrimaryButton(
-                label: 'Log out',
-                outlined: true,
-                color: AppColors.textSecondary,
-                onPressed: () => _logout(context),
               ),
             ],
           ),

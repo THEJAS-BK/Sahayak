@@ -291,6 +291,7 @@ export const Requests: React.FC = () => {
               <TableHead>
                 <TableRow>
                   <TableHeader>ID</TableHeader>
+                  <TableHeader>Photo</TableHeader>
                   <TableHeader>Senior</TableHeader>
                   <TableHeader>Category</TableHeader>
                   <TableHeader>Priority</TableHeader>
@@ -311,6 +312,26 @@ export const Requests: React.FC = () => {
                       <span style={{ fontWeight: 500, color: 'var(--color-text-secondary)' }}>
                         {req.id.slice(0, 8)}
                       </span>
+                    </TableCell>
+                    <TableCell>
+                      {req.image_url ? (
+                        <img
+                          src={req.image_url}
+                          alt={`Photo attached to request ${req.id.slice(0, 8)}`}
+                          loading="lazy"
+                          style={{
+                            width: '48px',
+                            height: '48px',
+                            objectFit: 'cover',
+                            borderRadius: '0.375rem',
+                            border: '1px solid var(--color-border)',
+                            background: 'var(--color-surface-white)',
+                            display: 'block',
+                          }}
+                        />
+                      ) : (
+                        <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <span style={{ fontWeight: 500 }}>

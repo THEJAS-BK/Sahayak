@@ -90,6 +90,8 @@ export async function listPoliceRequests(
     status: r.status,
     dispatch_attempt: r.dispatch_attempt,
     dispatch_batch: r.dispatch_batch,
+    image_url: r.image_url ?? null,
+    has_photo: r.image_url != null,
     created_at: r.created_at,
     updated_at: r.updated_at,
     dispatched_at: r.dispatched_at,

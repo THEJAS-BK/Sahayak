@@ -9,9 +9,12 @@
   through the pooled endpoint. A separate test database is required.
 - Background jobs run **in-process** via `node-cron` (no separate worker):
   the dispatch sweep and the daily cleanup sweep.
-- External services: SMTP (nodemailer) is the only delivery channel that ships.
-  Push is not implemented — `sendPush` logs — and the `firebase-admin` dependency
-  is gone. Both sit behind a notification adapter that can log-only.
+- External services: SMTP (nodemailer) for mail, and Cloudinary for request
+  photos (Q-09). Push is not implemented — `sendPush` logs — and the
+  `firebase-admin` dependency is gone. Push sits behind a notification adapter
+  that can log-only.
+- Cloudinary credentials are optional at boot, unlike everything else: without
+  them the server still starts and only Q-09 answers 503.
 - No queues, Redis, microservices, or WebSockets in the backend.
 
 ```text
@@ -19,8 +22,13 @@ Flutter app ─── HTTPS (senior JWT) ───► Backend API ◄─── H
         (preferred_language, name via WS to voice agent; no backend calls from agent)
                                           │
                                           ▼
-                                    PostgreSQL
-                                    (all state)
+                                 PostgreSQL
+                              (all durable state)
+                                    │
+                                    │ image_url only
+                                    ▼
+                                 Cloudinary
+                               (request photos)
 ```
 
 ## Directory layout (backend)
@@ -30,14 +38,14 @@ backend/src/
 ├── config/        # Zod-validated env → typed config, fail-fast
 ├── database/      # pg pool + migrations (node-pg-migrate)
 ├── lib/           # envelope/errors/asyncHandler/logger/http utils
-├── middleware/    # authenticate, requireRole, requireActive, rate limiters
+├── middleware/    # authenticate, requireRole, requireActive, rate limiters, upload
 ├── routes/        # single router aggregating module routers
 ├── modules/
 │   ├── auth/          # A-01..A-06
 │   ├── users/         # /me, fcm-token, shared user queries
 │   ├── seniors/       # senior profile + registration form
 │   ├── volunteers/    # volunteer profile, location/availability, accept
-│   ├── requests/      # Q-01..Q-08
+│   ├── requests/      # Q-01..Q-09
 │   ├── matching/      # candidate selection, haversine SQL, dispatch batch
 │   ├── emergencies/   # E-01..E-03
 │   ├── notifications/ # SMTP + FCM adapters (mock in dev)
@@ -48,7 +56,7 @@ backend/src/
 ## Request pipeline
 
 ```text
-express.json()
+express.json({ limit: '1mb' })   # leaves multipart alone
   → request-id/logger (optional)
   → route-scoped rate limiters
   → authenticate (Bearer → JWT, attaches req.user)
@@ -58,6 +66,15 @@ express.json()
   → controller / service (transactions via pg client)
   → 200 envelope
   → central error handler (maps ApiError → envelope; 500 → GENERIC)
+
+Q-09 replaces the last three steps: it has no JSON body, so zod has nothing to
+parse and multer handles the part instead. Its order is load-bearing —
+
+  requireCloudinary  (503 if unconfigured, before the body is read)
+    → assertCanSetRequestImage  (404/409 for someone else's or a closed request)
+    → multer → CloudinaryStorage (streams to Cloudinary; 5 MB, jpeg/png/webp)
+    → service writes image_url + image_public_id
+    → destroy the superseded asset after the commit
 ```
 
 Response envelope:
@@ -75,7 +92,7 @@ single error handler which maps to code + status per §2 of `api-plan.md`.
 | `auth` | OTP issue/verify (bcrypt hash, 10 min TTL, single-use, attempts), JWT sign/verify, refresh rotation + family revocation, logout. Police sessions: 8 h / no refresh. |
 | `users` | `/me`, `PATCH /me/fcm-token`, role/active gating helpers. |
 | `seniors` / `volunteers` | Registration form handling, profile reads, BR-08 filtered volunteer view. |
-| `requests` | CRUD + state-transition endpoints; single `canTransition(from, to)` call site (BR-04). |
+| `requests` | CRUD + state-transition endpoints; single `canTransition(from, to)` call site (BR-04). Q-09 photo upload: multer streams to Cloudinary and only the URL is persisted. |
 | `matching` | Candidate query (distance via Haversine in SQL, freshest location), ranking, dispatch batch, dispatch attempt bookkeeping. |
 | `emergencies` | Independent event logging (BR-11), escalation flag `escalated_to_112=true`, review flow. |
 | `notifications` | `EmailSender` (nodemailer or dev stub) and `PushSender` (FCM or dev stub); fire-and-forget, failures logged never throw. |

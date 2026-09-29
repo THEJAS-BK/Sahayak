@@ -91,6 +91,18 @@ export async function verifyOtpAndIssueTokens(emailInput: string, code: string):
 
 export async function refreshSession(rawToken: string): Promise<VerifiedSession> {
   const { refreshToken, user } = await rotateRefreshToken(pool, rawToken)
+
+  // Refresh must gate on the account itself, not just on holding a valid token.
+  // A rejected applicant still holds the refresh token minted at OTP
+  // verification, and without this check they can refresh forever and get a
+  // 200 with a working access token every time — the account is only turned
+  // away later, by `requireActive`. Revoking on the way out also stops the
+  // client from retrying in a loop.
+  if (!user.isActive) {
+    await revokeRefreshToken(pool, rawToken)
+    throw errors.forbidden('ACCOUNT_INACTIVE', 'Account is not yet approved or is inactive')
+  }
+
   return { user, accessToken: signAccessToken(user,'8h'), refreshToken }
 }
 

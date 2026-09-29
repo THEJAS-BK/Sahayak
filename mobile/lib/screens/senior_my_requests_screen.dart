@@ -278,6 +278,35 @@ class _RequestCard extends StatelessWidget {
                 ),
               ),
             ],
+            if (r.hasImage) ...[
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Image.network(
+                    r.imageUrl!,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, progress) => progress == null
+                        ? child
+                        : Container(
+                            color: AppColors.scaffold,
+                          ),
+                    errorBuilder: (_, __, ___) => Container(
+                      color: AppColors.scaffold,
+                      alignment: Alignment.center,
+                      child: const Text(
+                        'Photo unavailable',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

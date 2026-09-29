@@ -10,6 +10,8 @@
       "description": "Sudden chest pain, needs a ride to KMC Hospital",
       "priority": "urgent",
       "status": "DISPATCHED",
+      "has_photo": true,
+      "image_url": "https://res.cloudinary.com/example-cloud/image/upload/v1750000000/sahayak/sample-photo.jpg",
       "distance_m": 820,
       "senior": { "id": "sen-0002", "full_name": "Lakshmi Shetty" },
       "source": "voice_agent",
@@ -21,6 +23,8 @@
       "description": "Need transport to the bank in Udupi",
       "priority": "normal",
       "status": "DISPATCHED",
+      "has_photo": false,
+      "image_url": null,
       "distance_m": 2310,
       "senior": { "id": "sen-0003", "full_name": "Ravi Kumar" },
       "source": "flutter_app",
@@ -35,6 +39,8 @@
       "data": {
         "request_id": "req-1023",
         "status": "ACCEPTED",
+        "has_photo": false,
+        "image_url": null,
         "assigned_volunteer_id": "vol-0001"
       }
     }

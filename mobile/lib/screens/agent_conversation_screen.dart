@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/message.dart';
 import '../services/api_client.dart';
 import '../services/profile_service.dart';
+import '../services/requests_service.dart';
 import '../services/voice_payload.dart';
 import '../theme/app_colors.dart';
 import '../widgets/chat_bubble.dart';
@@ -216,6 +217,21 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
           longitude: home.longitude,
         ),
       );
+
+      // The photo goes up second, now that there is a request id to hang it
+      // on. The request itself is already created and dispatched at this
+      // point, so an upload failure is reported but never rolls anything back —
+      // re-sending the request would trip BR-13 and tell the senior they
+      // already have one open.
+      final requestId = res['request_id']?.toString();
+      final photoWarning = requestId == null
+          ? null
+          : await _uploadPhoto(
+              requestId,
+              request.imagePath,
+              mimeType: request.imageMimeType,
+            );
+
       // Dispatch is synchronous, so an empty batch means nobody was in range.
       // Saying "a volunteer will be in touch" regardless would leave the
       // senior waiting on an alert that was never sent to anyone.
@@ -224,7 +240,7 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
       setState(() {
         _pendingRequest = null;
         _messages.add(Message(
-          text: _sentNotice(request, notified),
+          text: _sentNotice(request, notified, photoWarning),
           role: MessageRole.agent,
           timestamp: DateTime.now(),
         ));
@@ -248,6 +264,34 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
     setState(() => _errorMessage = msg);
   }
 
+  /// Q-09. Returns a warning to append to the "sent" message, or null on
+  /// success or when no photo was picked.
+  ///
+  /// Swallows every failure on purpose: the request is already live and a
+  /// volunteer is already being dispatched to it, so the worst case of a failed
+  /// upload is a request without a photo, not a lost request.
+  Future<String?> _uploadPhoto(
+    String requestId,
+    String? imagePath, {
+    String? mimeType,
+  }) async {
+    if (imagePath == null || imagePath.isEmpty) return null;
+    try {
+      await RequestsService.instance.uploadPhoto(
+        requestId,
+        imagePath,
+        mimeType: mimeType,
+      );
+      return null;
+    } on ApiException catch (e) {
+      return e.code == 'PHOTO_TOO_LARGE'
+          ? 'Your photo was too large to send, so it was left off the request.'
+          : 'Your photo could not be attached, so it was left off the request.';
+    } catch (_) {
+      return 'Your photo could not be attached, so it was left off the request.';
+    }
+  }
+
   /// The offline greeting text shown before the first agent transcript lands.
   String _seedGreeting(String language) => language == 'kn'
       ? 'ಸ್ವಾಗತ. ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?'
@@ -255,11 +299,11 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
 
   /// User-facing notice appended after a request is POSTed, in the current
   /// conversation language.
-  String _sentNotice(VoiceHelpRequest request, bool notified) {
+  String _sentNotice(VoiceHelpRequest request, bool notified, [String? photoWarning]) {
     final what = categoryLabel(request.category).toLowerCase();
     final urgent = request.priority == 'urgent';
     if (_language == 'kn') {
-      return notified
+      final sent = notified
           ? 'ಕಳುಹಿಸಲಾಗಿದೆ — $what ಸಹಾಯ'
               '${urgent ? ' (ತುರ್ತು)' : ''} ವಿನಂತಿಸಲಾಗಿದೆ. '
               'ಸ್ವಯಂಸೇವಕರು ಶೀಘ್ರದಲ್ಲೇ ನಿಮ್ಮನ್ನು ಸಂಪರ್ಕಿಸುತ್ತಾರೆ.'
@@ -268,8 +312,9 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
               'ಸಮೀಪದಲ್ಲಿ ಯಾವುದೇ ಸ್ವಯಂಸೇವಕರು ಇಲ್ಲ, ಹಾಗಾಗಿ ಯಾರಿಗೂ '
               'ತಿಳಿಸಲಾಗಿಲ್ಲ. ದಯವಿಟ್ಟು ಹೆಲ್ಪ್‌ಲೈನ್‌ಗೆ ಕರೆ ಮಾಡಿ, ಅಥವಾ '
               'ಸ್ವಲ್ಪ ಸಮಯದ ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.';
+      return photoWarning == null ? sent : '$sent $photoWarning';
     }
-    return notified
+    final sent = notified
         ? 'Sent — $what help'
             '${urgent ? ' (urgent)' : ''} requested. '
             'A volunteer will be in touch shortly.'
@@ -278,6 +323,7 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
             'No volunteers are nearby right now, so nobody has been '
             'notified yet. Please call the helpline, or try again in a '
             'little while.';
+    return photoWarning == null ? sent : '$sent $photoWarning';
   }
 
   /// Applies a language selection and pushes it to the agent. Before the call

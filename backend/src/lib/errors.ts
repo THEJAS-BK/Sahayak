@@ -6,6 +6,8 @@ export const Status = {
   Conflict: 409,
   TooManyRequests: 429,
   ServerError: 500,
+  /** The server is missing configuration it needs to serve the request. */
+  ServiceUnavailable: 503,
 } as const
 
 export type StatusCode = (typeof Status)[keyof typeof Status]
@@ -43,5 +45,12 @@ export const errors = {
   invalidState: (message: string) => new ApiError('INVALID_STATE', message, Status.Conflict),
   tooMany: (message = 'Too many attempts, slow down') =>
     new ApiError('RATE_LIMITED', message, Status.TooManyRequests),
+  /**
+   * The server cannot serve this request because it is not configured to.
+   * Deliberately 5xx and not 400: nothing the client sent is wrong, so a
+   * client must not respond by changing its request or retrying immediately.
+   */
+  serviceUnavailable: (code = 'SERVICE_UNAVAILABLE', message = 'Not available on this server') =>
+    new ApiError(code, message, Status.ServiceUnavailable),
   server: (message = 'Internal server error') => new ApiError('INTERNAL', message, Status.ServerError),
 } as const

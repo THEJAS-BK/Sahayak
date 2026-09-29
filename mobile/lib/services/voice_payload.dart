@@ -23,6 +23,8 @@ class VoiceHelpRequest {
     required this.description,
     this.priority = 'normal',
     this.details,
+    this.imagePath,
+    this.imageMimeType,
   });
 
   /// Currently expected envelope schema version (agent's PAYLOAD_VERSION).
@@ -34,6 +36,21 @@ class VoiceHelpRequest {
   final String description;
   final String priority;
   final Map<String, dynamic>? details;
+
+  /// Local path to a photo the senior picked in the review dialog, or null.
+  ///
+  /// Never sent in [toCreateBody]: `POST /api/requests` takes JSON, and the
+  /// image goes up separately as multipart to `POST /api/requests/:id/photo`
+  /// once the server has handed back the new request id.
+  final String? imagePath;
+
+  /// What the platform said [imagePath] actually is, resolved once when the
+  /// photo was picked.
+  ///
+  /// Kept beside [imagePath] because the picked file lives in the picker's
+  /// cache under a name that may not carry a usable extension, so the upload
+  /// has to reuse this rather than guess again from the name.
+  final String? imageMimeType;
 
   /// Accepts either the v1 envelope
   /// `{ v, type, request_id, request: {...} }` or a bare legacy payload
@@ -79,11 +96,18 @@ class VoiceHelpRequest {
 
   /// Returns a copy with the given fields replaced, so a senior can correct the
   /// request in the review dialog before it is sent.
+  ///
+  /// Every argument merges the usual way — a null means "leave it alone". That
+  /// does not work for [imagePath], which the senior is allowed to remove
+  /// again, so clearing it takes [clearImage] rather than a null argument.
   VoiceHelpRequest copyWith({
     String? category,
     String? description,
     String? priority,
     Map<String, dynamic>? details,
+    String? imagePath,
+    String? imageMimeType,
+    bool clearImage = false,
   }) {
     return VoiceHelpRequest(
       requestId: requestId,
@@ -91,6 +115,8 @@ class VoiceHelpRequest {
       description: description ?? this.description,
       priority: VoiceHelpRequest._priorityOf(priority ?? this.priority),
       details: details ?? this.details,
+      imagePath: clearImage ? null : (imagePath ?? this.imagePath),
+      imageMimeType: clearImage ? null : (imageMimeType ?? this.imageMimeType),
     );
   }
 

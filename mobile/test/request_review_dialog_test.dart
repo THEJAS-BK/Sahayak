@@ -135,17 +135,38 @@ void main() {
     expect(_sendButton(tester).onPressed, isNull);
   });
 
-  testWidgets('camera tile is a placeholder', (tester) async {
-    // Tall phone viewport so the whole sheet (camera tile + actions) fits.
+  testWidgets('photo tile offers camera and gallery', (tester) async {
+    // Tall phone viewport so the whole sheet (photo tile + actions) fits.
     tester.view.physicalSize = const Size(1200, 3000);
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
 
     await _openDialog(tester, _envelope());
 
+    // Nothing is picked, so the tile is the "add" prompt and is marked
+    // optional — a photo must never be a precondition for sending a request.
+    expect(find.text('Add a photo'), findsOneWidget);
+    expect(find.text('Optional'), findsOneWidget);
+
     await tester.tap(find.text('Add a photo'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Photos are not available yet.'), findsOneWidget);
+    expect(find.text('Take a photo'), findsOneWidget);
+    expect(find.text('Choose from gallery'), findsOneWidget);
+  });
+
+  testWidgets('send carries no photo when none was picked', (tester) async {
+    // Tall phone viewport so the whole sheet (photo tile + actions) fits.
+    tester.view.physicalSize = const Size(1200, 3000);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    final holder = await _openDialog(tester, _envelope());
+
+    await tester.tap(find.text('Send request'));
+    await tester.pumpAndSettle();
+
+    expect(holder.completed, isTrue);
+    expect(holder.value?.imagePath, isNull);
   });
 }

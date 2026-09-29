@@ -140,6 +140,8 @@ Partial unique index: `(user_id) WHERE status IN ('PENDING','APPROVED')` → the
 | `dispatch_attempt` | int NOT NULL | default `0` |
 | `dispatched_at` | timestamptz NULL | |
 | `dispatch_batch` | jsonb NULL | array of volunteer ids (Q-04 membership) |
+| `image_url` | text NULL | Cloudinary delivery URL (Q-09). Public: anyone with the link can fetch the photo |
+| `image_public_id` | text NULL | **Server-only.** Cloudinary asset id, kept so a later upload can delete the asset it replaces. Never returned to a client |
 | `accepted_at` / `completed_at` / `cancelled_at` | timestamptz NULL | |
 | `created_at` / `updated_at` | timestamptz | |
 
@@ -227,6 +229,12 @@ PENDING ─(match)─► MATCHING ──► DISPATCHED ─(accept)─► ACCEPTE
   account approves them; requests, emergencies and audit logs follow from real
   use. The test suite is unaffected: it stays fixture-driven
   against the test database (created/dropped by vitest global setup).
+- `1750000000012_request_image_url` is the one destructive migration: it replaces
+  the `request_photos` table (raw `bytea`) with `help_requests.image_url` /
+  `image_public_id`. It drops the table outright rather than migrating rows,
+  which is only safe because the table was empty when it ran — **check the row
+  count before applying it anywhere real.** The `down` migration recreates the
+  table but cannot restore dropped photos.
 
 ## Distance in SQL (matching)
 

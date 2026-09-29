@@ -1,7 +1,3 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Card } from '../../components/ui/Card';
-import { Badge } from '../../components/ui/Badge';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -32,11 +28,6 @@ const formatDate = (iso: string) =>
     timeStyle: 'short',
   });
 
-export const Verification: React.FC = () => {
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<
-    'All' | 'Senior' | 'Volunteer'
-  >('All');
 const PAGE_SIZE = 25;
 
 /** R-01/R-02 form keys, so an officer reads "Home location" and not "home_latitude". */
@@ -523,80 +514,6 @@ export const Verification: React.FC = () => {
                       </span>
                     </TableCell>
 
-        {!loading && (
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableHeader>ID</TableHeader>
-                <TableHeader>Name</TableHeader>
-                <TableHeader>Role</TableHeader>
-                <TableHeader>Submitted</TableHeader>
-                <TableHeader>Status</TableHeader>
-                <TableHeader>Actions</TableHeader>
-              </TableRow>
-            </TableHead>
-
-            <TableBody>
-              {filteredData.map((record) => (
-                <TableRow key={record.id}>
-                  <TableCell>
-                    <span
-                      style={{
-                        fontWeight: 500,
-                        color: 'var(--color-text-secondary)',
-                      }}
-                    >
-                      {record.id}
-                    </span>
-                  </TableCell>
-
-                  <TableCell>
-                    <span style={{ fontWeight: 500 }}>
-                      {record.full_name ?? record.email}
-                    </span>
-                  </TableCell>
-
-                  <TableCell>{roleLabel(record.role)}</TableCell>
-
-                  <TableCell
-                    style={{
-                      color: 'var(--color-text-secondary)',
-                    }}
-                  >
-                    {formatDate(record.created_at)}
-                  </TableCell>
-
-                  <TableCell>
-                    <Badge variant={statusVariant[record.status]}>
-                      {record.status}
-                    </Badge>
-                  </TableCell>
-
-                  <TableCell>
-		    <Button
-  variant="ghost"
-  size="sm"
-  onClick={() => navigate(`/verification/${record.id}`)}
->
-  View
-</Button>
-                    {record.status === 'PENDING' ? (
-                      <div
-                        style={{
-                          display: 'flex',
-                          gap: '0.5rem',
-                        }}
-                      >
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={busyId === record.id}
-                          onClick={() =>
-                            updateStatus(record.id, 'APPROVED')
-                          }
-                        >
-                          Accept
-                        </Button>
                     <TableCell>
                       <span style={{ fontWeight: 500 }}>{record.full_name ?? 'Name not provided'}</span>
                       <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.75rem' }}>

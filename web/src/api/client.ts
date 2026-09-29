@@ -11,7 +11,6 @@ import type {
   SeniorListResult,
   VerificationDetail,
   VerificationListResult,
-  VerificationDetail,
   VolunteerDetail,
 } from './types';
 
@@ -274,13 +273,6 @@ export function reviewVerification(
   id: string,
   status: 'APPROVED' | 'REJECTED',
   reason?: string,
-): Promise<{ verification: unknown }> {
-  return request(`/verifications/${id}`, {
-    method: 'PATCH',
-    body: {
-      status,
-      ...(reason ? { reason } : {}),
-    },
 ): Promise<{ verification: { id: string; status: 'APPROVED' | 'REJECTED'; review_reason: string | null; reviewed_at: string | null } }> {
   return request(`/verifications/${id}`, {
     method: 'PATCH',

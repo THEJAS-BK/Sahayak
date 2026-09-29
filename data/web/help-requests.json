@@ -11,6 +11,8 @@
       "priority": "NORMAL",
       "source": "voice_agent",
       "status": "IN_PROGRESS",
+      "has_photo": true,
+      "image_url": "https://res.cloudinary.com/example-cloud/image/upload/v1750000000/sahayak/sample-photo.jpg",
       "assigned_volunteer": { "id": "vol-0001", "full_name": "Karthik Shetty", "phone_number": "+919876500021", "organization": "Udupi Red Cross" },
       "created_at": "2026-09-17T18:42:00Z",
       "dispatched_at": "2026-09-17T18:43:00Z",
@@ -26,6 +28,8 @@
       "priority": "URGENT",
       "source": "voice_agent",
       "status": "DISPATCHED",
+      "has_photo": false,
+      "image_url": null,
       "assigned_volunteer": null,
       "dispatch_batch": [
         { "id": "vol-0001", "latitude": 13.3486, "longitude": 74.7859, "distance_m": 820 },
@@ -44,6 +48,8 @@
       "priority": "NORMAL",
       "source": "flutter_app",
       "status": "DISPATCHED",
+      "has_photo": false,
+      "image_url": null,
       "assigned_volunteer": null,
       "dispatch_batch": [
         { "id": "vol-0002", "latitude": 13.3368, "longitude": 74.7466, "distance_m": 2310 },
@@ -62,6 +68,8 @@
       "priority": "URGENT",
       "source": "voice_agent",
       "status": "MATCHING",
+      "has_photo": false,
+      "image_url": null,
       "created_at": "2026-09-17T17:55:00Z",
       "dispatch_attempt": 1
     },
@@ -75,6 +83,8 @@
       "priority": "NORMAL",
       "source": "flutter_app",
       "status": "PENDING",
+      "has_photo": false,
+      "image_url": null,
       "created_at": "2026-09-17T17:30:00Z"
     },
     {
@@ -87,6 +97,8 @@
       "priority": "URGENT",
       "source": "flutter_app",
       "status": "COMPLETED",
+      "has_photo": false,
+      "image_url": null,
       "assigned_volunteer": { "id": "vol-0002", "full_name": "Sunitha Rai", "phone_number": "+919876500022" },
       "created_at": "2026-09-12T08:15:00Z",
       "completed_at": "2026-09-12T09:40:00Z"
@@ -101,6 +113,8 @@
       "priority": "NORMAL",
       "source": "flutter_app",
       "status": "COMPLETED",
+      "has_photo": false,
+      "image_url": null,
       "assigned_volunteer": { "id": "vol-0003", "full_name": "Prashanth Kamath", "phone_number": "+919876500023" },
       "created_at": "2026-09-08T07:00:00Z",
       "completed_at": "2026-09-08T07:55:00Z"
@@ -115,6 +129,8 @@
       "priority": "NORMAL",
       "source": "voice_agent",
       "status": "COMPLETED",
+      "has_photo": false,
+      "image_url": null,
       "assigned_volunteer": { "id": "vol-0004", "full_name": "Divya Poojary", "phone_number": "+919876500024" },
       "created_at": "2026-09-03T10:00:00Z",
       "completed_at": "2026-09-03T11:20:00Z"
@@ -129,6 +145,8 @@
       "priority": "NORMAL",
       "source": "flutter_app",
       "status": "COMPLETED",
+      "has_photo": false,
+      "image_url": null,
       "assigned_volunteer": { "id": "vol-0001", "full_name": "Karthik Shetty", "phone_number": "+919876500021" },
       "created_at": "2026-08-28T09:00:00Z",
       "completed_at": "2026-08-28T09:45:00Z"
@@ -143,6 +161,8 @@
       "priority": "NORMAL",
       "source": "voice_agent",
       "status": "COMPLETED",
+      "has_photo": false,
+      "image_url": null,
       "assigned_volunteer": { "id": "vol-0002", "full_name": "Sunitha Rai", "phone_number": "+919876500022" },
       "created_at": "2026-08-21T11:00:00Z",
       "completed_at": "2026-08-21T12:30:00Z"
@@ -157,6 +177,8 @@
       "priority": "NORMAL",
       "source": "voice_agent",
       "status": "COMPLETED",
+      "has_photo": false,
+      "image_url": null,
       "assigned_volunteer": { "id": "vol-0003", "full_name": "Prashanth Kamath", "phone_number": "+919876500023" },
       "created_at": "2026-08-12T08:30:00Z",
       "completed_at": "2026-08-12T09:15:00Z"
@@ -171,6 +193,8 @@
       "priority": "NORMAL",
       "source": "flutter_app",
       "status": "CANCELLED",
+      "has_photo": false,
+      "image_url": null,
       "cancelled_at": "2026-09-05T16:10:00Z",
       "created_at": "2026-09-05T15:40:00Z"
     },
@@ -184,6 +208,8 @@
       "priority": "URGENT",
       "source": "voice_agent",
       "status": "UNASSIGNED",
+      "has_photo": false,
+      "image_url": null,
       "dispatch_attempt": 3,
       "created_at": "2026-08-30T14:00:00Z"
     }
@@ -198,6 +224,8 @@
     "priority": "URGENT",
     "source": "voice_agent",
     "status": "DISPATCHED",
+    "has_photo": false,
+    "image_url": null,
     "created_at": "2026-09-17T19:02:00Z",
     "dispatch_attempt": 1,
     "assigned_volunteer": null,

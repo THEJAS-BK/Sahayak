@@ -55,7 +55,20 @@ router.post(
     const body = refreshSchema.safeParse(req.body)
     if (!body.success) throw errors.badRequest('refresh_token is required')
     const { user, accessToken, refreshToken } = await refreshSession(body.data.refresh_token)
-    ok(res, { access_token: accessToken, refresh_token: refreshToken, user: { id: user.id, role: user.role } })
+    // Mirror the OTP-verify envelope exactly. A client that treats refresh as
+    // the source of truth for account state cannot otherwise learn that the
+    // account is still awaiting approval.
+    const verificationStatus = await getVerificationStatus(pool, user.id)
+    ok(res, {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      user: {
+        id: user.id,
+        role: user.role,
+        is_active: user.isActive,
+        verification_status: verificationStatus,
+      },
+    })
   }),
 )
 

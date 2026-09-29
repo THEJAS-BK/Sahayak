@@ -17,10 +17,11 @@ export function createApp(): Express {
     next()
   })
 
-  // 8mb: request photo uploads (Q-09) send base64 image data as JSON; a 4 MB
-  // decoded photo is ~5.6 MB of base64. Every other route validates small
-  // bodies via zod, so the larger ceiling only widens the transport.
-  app.use(express.json({ limit: '8mb' }))
+  // Request photos are multipart uploads handled by multer (Q-09), which
+  // express.json() leaves alone. Nothing else on the API takes a large body —
+  // every route validates a small JSON payload via zod — so this only needs to
+  // cover the biggest of those.
+  app.use(express.json({ limit: '1mb' }))
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok' })

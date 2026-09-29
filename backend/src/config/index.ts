@@ -59,6 +59,10 @@ const rawEnv = z
     LIVEKIT_API_SECRET: emptyToUndefined,
     LIVEKIT_TOKEN_TTL_SECONDS: intFromEnv(300),
     LIVEKIT_AGENT_NAME: strFromEnv('sahayak'),
+    CLOUDINARY_CLOUD_NAME: emptyToUndefined,
+    CLOUDINARY_API_KEY: emptyToUndefined,
+    CLOUDINARY_API_SECRET: emptyToUndefined,
+    CLOUDINARY_FOLDER: strFromEnv('sahayak'),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== 'production') return
@@ -143,6 +147,19 @@ export const config = {
     apiSecret: typeof env.LIVEKIT_API_SECRET === 'string' ? env.LIVEKIT_API_SECRET : '',
     tokenTtlS: env.LIVEKIT_TOKEN_TTL_SECONDS,
     agentName: env.LIVEKIT_AGENT_NAME,
+  },
+  /**
+   * Request photo uploads. Optional: every credential may be absent, and the
+   * app then runs exactly as before minus photo upload. Deliberately not
+   * validated at boot, because the rest of the API has nothing to do with
+   * Cloudinary and should not refuse to start over a missing photo backend.
+   * `isCloudinaryConfigured` is what gates the upload route.
+   */
+  cloudinary: {
+    cloudName: typeof env.CLOUDINARY_CLOUD_NAME === 'string' ? env.CLOUDINARY_CLOUD_NAME : '',
+    apiKey: typeof env.CLOUDINARY_API_KEY === 'string' ? env.CLOUDINARY_API_KEY : '',
+    apiSecret: typeof env.CLOUDINARY_API_SECRET === 'string' ? env.CLOUDINARY_API_SECRET : '',
+    folder: env.CLOUDINARY_FOLDER,
   },
 } as const
 

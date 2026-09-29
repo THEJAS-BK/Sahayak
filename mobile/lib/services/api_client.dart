@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import '../config/app_config.dart';
 import 'session_service.dart';
@@ -43,6 +44,10 @@ class ApiClient {
   /// Upper bound for any backend request; without it a dead/unreachable host
   /// leaves the UI stuck on "Sending code..."/loading screens forever.
   static const Duration _timeout = Duration(seconds: 10);
+
+  /// Uploads get longer: a photo is streamed to Cloudinary through the backend,
+  /// which a phone on a slow connection will not finish inside [_timeout].
+  static const Duration _uploadTimeout = Duration(seconds: 90);
 
   Future<Map<String, dynamic>> post(String path,
       {Map<String, dynamic>? body}) async {
@@ -132,6 +137,49 @@ class ApiClient {
           _uri(path),
           headers: {if (newToken != null) 'Authorization': 'Bearer $newToken'},
         ).timeout(_timeout);
+      }
+    }
+
+    return _decode(response);
+  }
+
+  /// POSTs a single file as `multipart/form-data` on [field].
+  ///
+  /// Used for the request photo (Q-09). The whole body is one part, so the
+  /// request is rebuilt from [filePath] on every attempt rather than being
+  /// replayed — an `http.MultipartRequest` consumes its stream when sent and
+  /// cannot be sent twice, which is what the 401 retry below needs.
+  Future<Map<String, dynamic>> postMultipart(
+    String path, {
+    required String field,
+    required String filePath,
+    required String mimeType,
+  }) async {
+    final mime = MediaType.parse(mimeType);
+
+    Future<http.Response> send() async {
+      final token = SessionService.instance.accessToken;
+      final request = http.MultipartRequest('POST', _uri(path));
+      if (token != null && token.isNotEmpty) {
+        request.headers['Authorization'] = 'Bearer $token';
+      }
+      request.files.add(await http.MultipartFile.fromPath(
+        field,
+        filePath,
+        contentType: mime,
+      ));
+      // `send()` hands back a streaming response; buffer it so the envelope can
+      // be decoded exactly like every other call in this class.
+      return http.Response.fromStream(
+        await request.send().timeout(_uploadTimeout),
+      );
+    }
+
+    var response = await send();
+    if (response.statusCode == 401) {
+      final token = SessionService.instance.accessToken;
+      if (token != null && token.isNotEmpty && await refresh()) {
+        response = await send();
       }
     }
 
