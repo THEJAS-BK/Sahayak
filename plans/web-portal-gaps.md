@@ -7,18 +7,20 @@ supersedes the earlier "no backend list endpoints" claim, which was out of date.
 
 | # | Page | Route | Endpoint | State |
 |---|---|---|---|---|
-| 1 | Dashboard | `/` | `GET /police/requests`, `GET /audit-logs` | built |
-| 2 | Requests | `/requests` | `GET /police/requests` | built |
+| 1 | Dashboard | `/` | `GET /police/overview` (P-08, new), `GET /audit-logs` | built |
+| 2 | Requests | `/requests` | `GET /police/requests` | built — **keyset pagination wired** |
 | 3 | Request Detail | `/requests/:requestId` | `GET /requests/:id`, `GET /police/volunteers`, `PATCH /police/requests/:id/assign` | built |
-| 4 | Verification | `/verification` | `GET /verifications`, `PATCH /verifications/:id` | built |
+| 4 | Verification | `/verification` | `GET /verifications`, `GET /verifications/:id` (V-02), `PATCH /verifications/:id` | built — **detail drawer + reject reason** |
 | 5 | Emergencies | `/emergencies` | `GET /police/emergency-events` (E-02), `PATCH /police/emergency-events/:id` (E-03) | built |
 | 6 | Seniors | `/seniors`, `/seniors/:seniorId` | `GET /police/seniors` (P-06), `GET /police/seniors/:id` (P-07) | built — **route added** |
 | 7 | Volunteers | `/volunteers`, `/volunteers/:volunteerId` | `GET /police/volunteers` (P-04), `GET /police/volunteers/:id` (P-05b) | built — **detail route added** |
 | 8 | Audit Logs | `/audit-logs` | `GET /audit-logs` (P-02) | built |
-| 9 | Monitoring | — | — | **not built — undefined** |
-| 10 | Map | — | none needed | **not built — needs a map library** |
+| 9 | Monitoring | `/monitoring` | `GET /police/requests` (P-01) | built |
+| 10 | Map | `/map` | `GET /police/requests` (P-01), `GET /police/emergency-events` (E-02) | built — **Leaflet** |
 
-Everything except Monitoring and Map now has a real page behind a real endpoint.
+All ten pages now have a real page behind a real endpoint, plus `/login` and a
+404. Everything outside the route table renders `NotFound`, and the shell refuses
+a non-police session.
 
 ## Corrections to earlier docs
 
@@ -91,34 +93,90 @@ New, all police-only, all tested in `backend/tests/police-directory.test.ts`:
 - `declined` comes from a `request_declines` join, so an officer reviewing a slow
   dispatch can see "offered and said no" rather than an empty row.
 
+## Second pass: Monitoring and Map
+
+Both were left unbuilt the first time round, Monitoring because its purpose was
+undefined and Map because a mapping library is a dependency decision. Both are
+now built, and the reason each turned out not to need new backend work is the
+same: the data the console already fetches was already there.
+
+### `GET /api/police/overview` (P-08) — new
+
+Monitoring did turn out to need one thing the Dashboard was faking. The stat
+tiles were derived client-side from a single `P-01 GET /police/requests?limit=200`
+page, so any total above the page size was wrong and nothing said so.
+
+- `backend/src/modules/police/overview.service.ts` (new),
+  `overview.routes.ts` (new), mounted in `backend/src/routes/index.ts`.
+- Police-only, `requireActive`. Counts open / waiting-for-volunteer / in-progress
+  / urgent / completed-in-window, plus emergencies awaiting review, pending
+  verifications and available volunteers. All in SQL, so no page cap.
+- Optional `from` / `to` bound the "completed today" tile. **If only one is
+  supplied the whole window falls back to the server's own day** — mixing an
+  officer's start bound against a UTC end bound would report a week of
+  completions as "today".
+
+### Monitoring — `/monitoring`
+
+- Still no defined product of its own. It is a re-presentation of `P-01` as a
+  board: waiting-for-volunteer / volunteer-on-it / offer-not-answered, with a
+  stacked bar, polling every 15 s, and click-through to request detail.
+- **The "Unassigned" label was wrong.** It counted `DISPATCHED` together with
+  `UNASSIGNED`, but a `DISPATCHED` request has a *named* volunteer who has not
+  answered yet. The segment is now "Offer not answered", and the stat tile says
+  the same thing.
+- **The old poll doubled itself on every tick.** `requests.length` was in the
+  effect's dependency list, so each response tore down the interval and
+  immediately re-fired. Filters now live in a ref, synced in an effect.
+- Filtering and the date range moved server-side. A `to` of `2026-09-27T14:00`
+  was read as 14:00 on the 27th, not the end of it, so the officer's last few
+  hours were missing from the board.
+
+### Map — `/map`
+
+- **Leaflet**, added to `web/package.json`. No new endpoint: `P-01` and `E-02`
+  already return coordinates.
+- **Requests and emergencies only.** `base_*` / `home_*` on volunteers and seniors
+  are registration-time estimates, often just a locality; `current_*` only exists
+  once live position updates ship. Pinning an officer's map to them would read as
+  live tracking that does not exist. Rows with no usable coordinates are counted
+  on screen rather than dropped without explanation.
+- Polls every 30 s, fits to the loaded points, layer toggles, popups deep-link to
+  the detail pages.
+- **Full-bleed.** The old page sat inside a padded `<main>` under the header, so
+  it was a box in the middle of the screen. `Layout` now treats `/map` as
+  immersive: no header, no padding, `100dvh`, isolated stacking context so
+  Leaflet's `z-index` values stop competing with the sidebar.
+
 ## Not built, and why
 
-### Monitoring — purpose undefined
+Nothing remains in this list. The two entries below are kept because they record
+why each page ended up shaped the way it did.
 
-Nothing in the plans says what this page shows: a live request status board,
-system health, or dispatch telemetry are three different products. It was left
-unbuilt rather than invented, because a guessed contract is harder to unpick
-than a missing page.
+### Monitoring — purpose still undefined
 
-If it means "live", the portal currently polls nothing and would need a push
-channel. Nothing in the backend provides one: the Firestore mirror has been
-removed and push notifications are not implemented, so this would be built from
-scratch (server-sent events, or a WebSocket) rather than switched on.
+The page is built, but nothing in the plans says what it is *for*. It is a
+status board over `P-01`, which is useful, but a live request board, system
+health and dispatch telemetry are three different products and only one of them
+shipped. If the design settles on another, it should get its own endpoint rather
+than another re-presentation of `P-01`.
 
-### Map — no backend work needed, but a dependency decision
+Live position would need a push channel, which does not exist: the Firestore
+mirror has been removed and push notifications are not implemented. That would
+be built from scratch (server-sent events, or a WebSocket) rather than switched
+on.
+
+### Map — the dependency call, made
 
 - **No new route is required.** `GET /police/requests` already returns
   `latitude`/`longitude` per request and `GET /police/emergency-events` already
   returns them per event. The map is a rendering concern over data the console
   can already fetch.
-- `web/package.json` has no mapping library; adding Leaflet or MapLibre is a
-  dependency decision, not a bug fix.
-- A first version should plot **requests and emergencies only**. Volunteer
-  markers would be misleading: `base_*` is whatever was typed at registration,
-  often just a locality, and `current_*` only exists once live position updates
-  ship.
+- A first version plots **requests and emergencies only**, as above.
 
 ## Client changes
+
+First pass:
 
 - `web/src/api/client.ts`: `fetchEmergencyEvents`, `reviewEmergencyEvent`,
   `fetchSeniors`, `fetchSenior`, `fetchVolunteer`. `fetchAuditLogs` changed from
@@ -132,6 +190,23 @@ scratch (server-sent events, or a WebSocket) rather than switched on.
 - `App.tsx`: six routes added. `Sidebar.tsx`: `pending`/`SOON` machinery deleted
   — every nav item is now a real page.
 
+Second pass:
+
+- `web/src/api/client.ts`: `fetchPoliceOverview`, `fetchVerification`,
+  `reviewVerification` now sends `reason`, and `logout` calls `A-04`.
+  Three latent bugs fixed while in there: the JWT role decoder did not handle
+  base64url (`-`/`_`), so a role read off a token with either in its payload came
+  back `undefined`; `setSession` left the previous `sahayak_user` in place when
+  only a token was passed; and a hung request had no timeout, leaving a spinner on
+  screen forever.
+- `web/src/api/types.ts`: `PoliceOverview`, `VerificationDetail`, and
+  `CurrentUser.verification_status`.
+- Rewritten: `Map/index.tsx` (as `MapPage`), `Dashboard`, `Verification`,
+  `Requests`, `Monitoring`, `Login`, `Header`, `Sidebar`, `App`.
+- `Layout.tsx` + `index.css`: full-bleed `/map`, marker/pin styling,
+  `.auth-screen` viewport fallback.
+- `web/package.json`: **Leaflet** added.
+
 ## Deliberate UI constraints
 
 - **No distance column on the volunteers list.** Volunteer positions are not
@@ -139,14 +214,38 @@ scratch (server-sent events, or a WebSocket) rather than switched on.
   distance next to a registration-time locality would be false precision.
 - **Keyset pagination, not offset**, on every list. A new SOS arriving while an
   officer is mid-scroll would otherwise shift rows and duplicate the one being
-  read.
+  read. `/requests` now actually follows `next_cursor`; it used to fetch a page,
+  throw the cursor away, and show no way to reach the rest.
+- **Search fields say what they search.** `GET /police/requests` has no `search`
+  parameter, so the Requests search box is labelled "Search loaded rows" and
+  filters the pages already in memory. Labelling it "Search" would imply a
+  server-wide search that does not exist.
+- **A failed poll keeps the last good data.** Both Monitoring and the header
+  badge surface the error without blanking the board — a board that empties
+  because one request timed out reads as "no emergencies", which is the one
+  conclusion an operator must never draw by accident.
 - **Volunteer "last reported" is labelled `(stale)`** outside 10 minutes, and the
   freshness is computed at fetch time rather than during render.
 - **Aadhaar is never fetched or displayed**, and the backend does not send it.
+- **The dev OTP is not compiled into production builds.** The old Login page
+  hardcoded `123456`, pre-filled it into the field, and printed it on the card,
+  so any deployed bundle could be guessed into. It is now read from
+  `import.meta.env.VITE_OTP_DEV_CODE` and gated on `import.meta.env.DEV`.
 
 ## Verification
 
 ```bash
-cd backend && npm test          # 132 tests, incl. police-directory.test.ts
-cd web && npm run lint && npm run build
+cd backend && npm run typecheck
+cd backend && npm test            # blocked: needs DATABASE_URL_TEST, see below
+cd web && npm run typecheck && npm run lint && npm run build
+```
+
+`backend/tests/police-overview.test.ts` is new in the second pass and is written
+but **not yet executed** — `backend/.env` has `DATABASE_URL_TEST=` empty, and the
+suite guards against running against the shared Neon database because it truncates
+every table. Point it at a dedicated test branch and the count below will include
+it:
+
+```bash
+cd backend && DATABASE_URL_TEST='<test-branch-url>' npm test
 ```
