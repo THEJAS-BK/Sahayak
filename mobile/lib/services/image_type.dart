@@ -121,9 +121,11 @@ String? _mimeTypeOfSignature(Uint8List b) {
 /// would reject it.
 ///
 /// [declaredMimeType] is what the platform reported the file to be. It is
-/// trusted when it is a real type, because it costs nothing; note that
-/// `image_picker` on Android returns an `XFile` with no type at all, so this
-/// is often null and the signature check below is what actually decides.
+/// trusted when it names a type the backend accepts, because that costs
+/// nothing, but it is never allowed to veto the signature check: a declaration
+/// can be stale or simply wrong, and the bytes are what actually get uploaded.
+/// Note that `image_picker` on Android returns an `XFile` with no type at all,
+/// so this is often null and the signature check is what decides.
 ///
 /// `image/jpg` is normalized to `image/jpeg` throughout because both spellings
 /// are in use and only the second is a real type.
@@ -132,20 +134,28 @@ String? resolveImageMimeType(
   String? declaredMimeType,
 }) {
   final declared = _canonical(declaredMimeType);
-  if (declared != null) {
-    if (kAcceptedImageMimeTypes.contains(declared)) return declared;
-    // A definite image type we do not accept. Re-encoding on device is out of
-    // scope, so report it instead of uploading and taking a 400.
-    if (kOtherImageMimeTypes.contains(declared)) return null;
-    // Anything else (`application/octet-stream`, a vendor string) says nothing
-    // useful about the content, so keep looking.
-  }
+  if (declared != null && kAcceptedImageMimeTypes.contains(declared)) return declared;
 
+  // A declared type the backend will not take is remembered but not acted on
+  // yet: iOS hands back a cached copy that `imageQuality` has already
+  // re-encoded to JPEG while `XFile.mimeType` still says `image/heic`, so
+  // rejecting on the declaration alone turns away a file that would have
+  // uploaded fine. The bytes get the last word, below.
+  final declaredIsUnsupported = declared != null && kOtherImageMimeTypes.contains(declared);
+
+  // Anything else (`application/octet-stream`, a vendor string) says nothing
+  // useful about the content, so keep looking.
   final sniffed = _canonical(detectImageMimeTypeFromBytes(filePath));
   if (sniffed != null) {
     if (kAcceptedImageMimeTypes.contains(sniffed)) return sniffed;
     if (kOtherImageMimeTypes.contains(sniffed)) return null;
   }
+
+  // Unreadable or unrecognised bytes, so the declaration is the only real
+  // evidence left. A definite "this is a HEIC" is reported rather than being
+  // second-guessed against the file name; re-encoding on device is out of
+  // scope, so uploading it would only earn a 400.
+  if (declaredIsUnsupported) return null;
 
   final dot = filePath.lastIndexOf('.');
   if (dot < 0 || dot == filePath.length - 1) return null;

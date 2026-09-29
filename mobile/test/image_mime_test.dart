@@ -101,6 +101,26 @@ void main() {
       );
     });
 
+    test('believes the bytes over an unsupported declared type', () {
+      // iOS re-encodes the picked copy to JPEG because `imageQuality` is set,
+      // but keeps reporting the original format on `XFile.mimeType`. Trusting
+      // the declaration here turns away a file that uploads perfectly well.
+      final path = write('image_picker999', kJpegBytes);
+      expect(
+        resolveImageMimeType(path, declaredMimeType: 'image/heic'),
+        'image/jpeg',
+      );
+    });
+
+    test('still rejects HEIC when the bytes agree it is HEIC', () {
+      // The fix above must not become a way through for a real HEIC: here the
+      // declaration and the signature both say so, and the file is even named
+      // `.jpg` to prove the extension cannot talk the way out of it.
+      final path = write('photo.jpg', kHeicBytes);
+      expect(resolveImageMimeType(path, declaredMimeType: 'image/heic'), isNull);
+      expect(resolveImageMimeType(path), isNull);
+    });
+
     test('rejects a HEIC found by signature, not by name', () {
       expect(resolveImageMimeType(write('photo.png', kHeicBytes)), isNull);
     });
