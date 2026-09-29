@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -39,6 +40,7 @@ const formatDate = (iso: string) =>
   });
 
 export const Verification: React.FC = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<
     'All' | 'Senior' | 'Volunteer'
   >('All');
@@ -345,6 +347,13 @@ export const Verification: React.FC = () => {
                   </TableCell>
 
                   <TableCell>
+		    <Button
+  variant="ghost"
+  size="sm"
+  onClick={() => navigate(`/verification/${record.id}`)}
+>
+  View
+</Button>
                     {record.status === 'PENDING' ? (
                       <div
                         style={{

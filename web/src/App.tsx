@@ -15,6 +15,7 @@ import { AuditLogs } from './pages/AuditLogs';
 import { Map } from './pages/Map';
 import { Monitoring } from './pages/Monitoring';
 import { getSessionRole, getToken } from './api/client';
+import { VerificationDetails } from './pages/VerificationDetails';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   if (!getToken()) return <Navigate to="/login" replace />;
@@ -50,6 +51,10 @@ function App() {
         >
           <Route index element={<Dashboard />} />
           <Route path="verification" element={<Verification />} />
+	<Route
+  path="verification/:verificationId"
+  element={<VerificationDetails />}
+/>
           <Route path="requests" element={<Requests />} />
           <Route path="requests/:requestId" element={<RequestDetails />} />
           <Route path="monitoring" element={<Monitoring />} />
