@@ -12,6 +12,7 @@ import { VolunteerDetails } from './pages/VolunteerDetails';
 import { Seniors } from './pages/Seniors';
 import { SeniorDetails } from './pages/SeniorDetails';
 import { AuditLogs } from './pages/AuditLogs';
+import { Map } from './pages/Map';
 import { getSessionRole, getToken } from './api/client';
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -56,6 +57,7 @@ function App() {
           <Route path="seniors" element={<Seniors />} />
           <Route path="seniors/:seniorId" element={<SeniorDetails />} />
           <Route path="audit-logs" element={<AuditLogs />} />
+          <Route path="map" element={<Map />} />
           <Route path="*" element={<div style={{ padding: '2rem' }}>Page not found or under construction.</div>} />
         </Route>
       </Routes>
