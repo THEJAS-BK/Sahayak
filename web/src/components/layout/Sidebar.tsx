@@ -1,4 +1,5 @@
 import React from 'react';
+import { LayoutDashboard, Users, AlertTriangle, ShieldCheck, LogOut, ListChecks, ScrollText, Map as MapIcon, Activity } from 'lucide-react';
 import {
   Activity,
   AlertTriangle,
@@ -139,6 +140,13 @@ export const Sidebar: React.FC = () => {
         ))}
       </nav>
 
+      <div style={{ padding: '1.5rem 1rem', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+               <button onClick={handleLogout} style={{
+            display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+            color: '#94A3B8', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500,
+            fontFamily: 'inherit', textAlign: 'left', fontSize: '1rem' as const, width: '100%',
+        }}>
+          <LogOut size={20} />
       <div
         style={{
           padding: '0.75rem',
