@@ -5,15 +5,13 @@ import '../models/help_request.dart';
 import '../services/api_client.dart';
 import '../services/profile_service.dart';
 import '../services/requests_service.dart';
-import '../services/session_service.dart';
-import '../services/user_session.dart';
 import '../theme/app_colors.dart';
 import '../widgets/sahayak_app_bar.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/status_badge.dart';
-import 'create_login_screen.dart';
 import 'request_accepted_screen.dart';
 import 'request_detail_screen.dart';
+import 'senior_profile_screen.dart';
 
 /// Volunteer dashboard backed by real data:
 ///   * nearby requests  -> GET /api/requests/nearby  (Q-04)
@@ -284,18 +282,6 @@ class _VolunteerHomeScreenState extends State<VolunteerHomeScreen>
     );
   }
 
-  Future<void> _logout() async {
-    await SessionService.instance.clear();
-    ProfileService.instance.clearCache();
-    await UserSession.clear();
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const CreateLoginScreen()),
-      (route) => false,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -304,6 +290,10 @@ class _VolunteerHomeScreenState extends State<VolunteerHomeScreen>
         subtitle: 'Volunteer Portal',
         notificationCount: _unseenCount,
         onNotificationTap: _showNotifications,
+        onProfileTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SeniorProfileScreen()),
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: _load,
@@ -449,14 +439,6 @@ class _VolunteerHomeScreenState extends State<VolunteerHomeScreen>
               ),
             ),
           ),
-
-        const SizedBox(height: 32),
-        TextButton.icon(
-          onPressed: _logout,
-          icon: const Icon(Icons.logout, size: 16),
-          label: const Text('Log out'),
-          style: TextButton.styleFrom(foregroundColor: AppColors.textSecondary),
-        ),
       ],
     );
   }

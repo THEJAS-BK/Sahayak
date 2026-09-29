@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import '../services/profile_service.dart';
 import '../services/session_service.dart';
+import '../services/user_session.dart';
 import '../theme/app_colors.dart';
+import '../widgets/primary_button.dart';
+import 'create_login_screen.dart';
 
 /// Senior profile view, read from `GET /api/me` (the registration the user
 /// actually submitted). The role comes from the auth session, which is the
 /// authority on it.
+///
+/// Also serves the volunteer portal, so signing out lives here for both roles
+/// rather than on each home screen.
 class SeniorProfileScreen extends StatefulWidget {
   const SeniorProfileScreen({super.key});
 
@@ -145,8 +151,31 @@ class _SeniorProfileScreenState extends State<SeniorProfileScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 28),
+          PrimaryButton(
+            label: 'Log out',
+            outlined: true,
+            icon: Icons.logout,
+            color: AppColors.error,
+            onPressed: _logout,
+          ),
         ],
       ),
+    );
+  }
+
+  /// Clears all three session layers, then returns to the start of the auth
+  /// flow. The pushed-and-removed route is what stops a back-swipe from
+  /// landing on a home screen whose session no longer exists.
+  Future<void> _logout() async {
+    await SessionService.instance.clear();
+    ProfileService.instance.clearCache();
+    await UserSession.clear();
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const CreateLoginScreen()),
+      (route) => false,
     );
   }
 

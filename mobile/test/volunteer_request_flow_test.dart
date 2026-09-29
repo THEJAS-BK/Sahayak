@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sahayak_mobile/models/help_request.dart';
 import 'package:sahayak_mobile/screens/request_detail_screen.dart';
+import 'package:sahayak_mobile/screens/senior_profile_screen.dart';
 import 'package:sahayak_mobile/screens/volunteer_home_screen.dart';
 import 'package:sahayak_mobile/services/api_client.dart';
 import 'package:sahayak_mobile/services/profile_service.dart';
@@ -289,6 +290,21 @@ void main() {
             'GET /api/requests/nearby?lat=13.3522&lng=74.7928&radius_m=5000'),
       );
       expect(api.calls, contains('GET /api/requests/me'));
+    });
+
+    // Signing out lives on the profile screen, so the app-bar avatar is the
+    // only way a volunteer reaches it.
+    testWidgets('the app bar avatar opens the profile with Log out',
+        (tester) async {
+      await tester.pumpWidget(
+          const MaterialApp(home: VolunteerHomeScreen(pollInterval: null)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(CircleAvatar));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SeniorProfileScreen), findsOneWidget);
+      expect(find.text('Log out'), findsOneWidget);
     });
 
     testWidgets('stat tiles are computed from real rows', (tester) async {
