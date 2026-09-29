@@ -97,6 +97,21 @@ export interface VerificationSummary {
   created_at: string;
   reviewed_at: string | null;
 }
+export interface VerificationDetail {
+  id: string;
+  user_id: string;
+  role: VerificationRole;
+  form_data: Record<string, unknown>;
+  status: VerificationStatus;
+  created_at: string;
+  reviewed_at: string | null;
+  review_reason: string | null;
+  reviewed_by: string | null;
+  user: {
+    id: string;
+    email: string;
+  };
+}
 
 export interface VerificationListResult {
   verifications: VerificationSummary[];

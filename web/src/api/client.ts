@@ -11,6 +11,7 @@ import type {
   SeniorListResult,
   VerificationDetail,
   VerificationListResult,
+  VerificationDetail,
   VolunteerDetail,
 } from './types';
 
@@ -255,6 +256,9 @@ export function fetchVerifications(params?: Record<string, string>): Promise<Ver
     : '';
   return request(`/verifications${query}`);
 }
+export function fetchVerificationDetail(id: string): Promise<{ verification: VerificationDetail }> {
+  return request(`/verifications/${id}`);
+}
 
 /** V-02: the submitted form behind a queue row, so a decision has evidence. */
 export function fetchVerification(id: string): Promise<{ verification: VerificationDetail }> {
@@ -270,13 +274,19 @@ export function reviewVerification(
   id: string,
   status: 'APPROVED' | 'REJECTED',
   reason?: string,
+): Promise<{ verification: unknown }> {
+  return request(`/verifications/${id}`, {
+    method: 'PATCH',
+    body: {
+      status,
+      ...(reason ? { reason } : {}),
+    },
 ): Promise<{ verification: { id: string; status: 'APPROVED' | 'REJECTED'; review_reason: string | null; reviewed_at: string | null } }> {
   return request(`/verifications/${id}`, {
     method: 'PATCH',
     body: { status, ...(reason?.trim() ? { reason: reason.trim() } : {}) },
   });
 }
-
 /**
  * P-02: recent activity. Takes a filter object rather than a bare limit so the
  * dedicated Audit Logs page can reuse this instead of adding a second call shape.

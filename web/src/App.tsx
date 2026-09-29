@@ -99,6 +99,10 @@ function App() {
         >
           <Route index element={<Dashboard />} />
           <Route path="verification" element={<Verification />} />
+	<Route
+  path="verification/:verificationId"
+  element={<VerificationDetails />}
+/>
           <Route path="requests" element={<Requests />} />
           <Route path="requests/:requestId" element={<RequestDetails />} />
           <Route path="monitoring" element={<Monitoring />} />
