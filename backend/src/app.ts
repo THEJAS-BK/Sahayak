@@ -17,7 +17,10 @@ export function createApp(): Express {
     next()
   })
 
-  app.use(express.json({ limit: '1mb' }))
+  // 8mb: request photo uploads (Q-09) send base64 image data as JSON; a 4 MB
+  // decoded photo is ~5.6 MB of base64. Every other route validates small
+  // bodies via zod, so the larger ceiling only widens the transport.
+  app.use(express.json({ limit: '8mb' }))
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok' })
