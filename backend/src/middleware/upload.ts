@@ -1,7 +1,7 @@
 import multer from 'multer'
 import type { NextFunction, Request, Response } from 'express'
 import { CloudinaryStorage } from 'multer-storage-cloudinary-v2'
-import cloudinary from '../config/cloudinary.js'
+import cloudinary, { isCloudinaryConfigured } from '../config/cloudinary.js'
 import { config } from '../config/index.js'
 import { errors } from '../lib/errors.js'
 
@@ -52,8 +52,16 @@ const uploader = multer({
  * halfway through a 5 MB upload.
  */
 export function requireCloudinary(_req: Request, _res: Response, next: NextFunction): void {
-  if (config.cloudinary.cloudName === '') {
-    next(errors.badRequest('Photo uploads are not configured on this server', 'IMAGE_UPLOAD_UNAVAILABLE'))
+  // All three credentials, not just the cloud name: a half-filled .env is the
+  // realistic failure here, and gating on the cloud name alone let it through
+  // to fail part-way into the upload instead.
+  if (!isCloudinaryConfigured) {
+    next(
+      errors.serviceUnavailable(
+        'IMAGE_UPLOAD_UNAVAILABLE',
+        'Photo uploads are not configured on this server',
+      ),
+    )
     return
   }
   next()
