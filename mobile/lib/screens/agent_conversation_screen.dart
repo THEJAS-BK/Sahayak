@@ -226,7 +226,11 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
       final requestId = res['request_id']?.toString();
       final photoWarning = requestId == null
           ? null
-          : await _uploadPhoto(requestId, request.imagePath);
+          : await _uploadPhoto(
+              requestId,
+              request.imagePath,
+              mimeType: request.imageMimeType,
+            );
 
       // Dispatch is synchronous, so an empty batch means nobody was in range.
       // Saying "a volunteer will be in touch" regardless would leave the
@@ -266,10 +270,18 @@ class _AgentConversationScreenState extends State<AgentConversationScreen> {
   /// Swallows every failure on purpose: the request is already live and a
   /// volunteer is already being dispatched to it, so the worst case of a failed
   /// upload is a request without a photo, not a lost request.
-  Future<String?> _uploadPhoto(String requestId, String? imagePath) async {
+  Future<String?> _uploadPhoto(
+    String requestId,
+    String? imagePath, {
+    String? mimeType,
+  }) async {
     if (imagePath == null || imagePath.isEmpty) return null;
     try {
-      await RequestsService.instance.uploadPhoto(requestId, imagePath);
+      await RequestsService.instance.uploadPhoto(
+        requestId,
+        imagePath,
+        mimeType: mimeType,
+      );
       return null;
     } on ApiException catch (e) {
       return e.code == 'PHOTO_TOO_LARGE'

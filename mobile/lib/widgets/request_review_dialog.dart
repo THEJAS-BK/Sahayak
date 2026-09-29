@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../services/api_client.dart';
+import '../services/image_type.dart';
 import '../services/voice_payload.dart';
 import '../theme/app_colors.dart';
 import 'primary_button.dart';
@@ -57,6 +57,7 @@ class _RequestReviewDialogState extends State<RequestReviewDialog> {
   /// Local path of the photo the senior picked, or null. Not uploaded from
   /// here — see [_PhotoTile].
   String? _imagePath;
+  String? _imageMimeType;
 
   final ImagePicker _picker = ImagePicker();
 
@@ -92,13 +93,22 @@ class _RequestReviewDialogState extends State<RequestReviewDialog> {
       );
       if (picked == null || !mounted) return;
 
-      final mime = ApiClient.imageMimeTypeFor(picked.path);
+      // `picked.mimeType` is what the platform read off the file. The picked
+      // copy lands in the picker's cache under a name that often has no usable
+      // extension, so trusting the name alone rejects valid PNGs.
+      final mime = resolveImageMimeType(
+        picked.path,
+        declaredMimeType: picked.mimeType,
+      );
       if (mime == null) {
         _notify('That file is not a JPEG, PNG or WebP image.');
         return;
       }
 
-      setState(() => _imagePath = picked.path);
+      setState(() {
+        _imagePath = picked.path;
+        _imageMimeType = mime;
+      });
     } catch (e) {
       _notify('Could not open that photo. Check camera and photo permissions.');
     }
@@ -117,6 +127,7 @@ class _RequestReviewDialogState extends State<RequestReviewDialog> {
         description: _descriptionCtrl.text.trim(),
         priority: _priority,
         imagePath: _imagePath,
+        imageMimeType: _imageMimeType,
         clearImage: _imagePath == null,
       ),
     );
@@ -186,7 +197,10 @@ class _RequestReviewDialogState extends State<RequestReviewDialog> {
                     _PhotoTile(
                       imagePath: _imagePath,
                       onPick: _pick,
-                      onClear: () => setState(() => _imagePath = null),
+                      onClear: () => setState(() {
+                        _imagePath = null;
+                        _imageMimeType = null;
+                      }),
                     ),
                     const SizedBox(height: 8),
                   ],

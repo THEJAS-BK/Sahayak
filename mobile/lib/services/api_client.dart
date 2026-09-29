@@ -49,27 +49,6 @@ class ApiClient {
   /// which a phone on a slow connection will not finish inside [_timeout].
   static const Duration _uploadTimeout = Duration(seconds: 90);
 
-  /// Image MIME types the backend accepts on `POST /api/requests/:id/photo`.
-  ///
-  /// The part has to declare a real image type: the server's upload middleware
-  /// rejects anything else, and `MultipartFile.fromPath` would otherwise send
-  /// `application/octet-stream` and be turned away for a file it could read.
-  static const Map<String, String> supportedImageMimeTypes = {
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png',
-    'webp': 'image/webp',
-  };
-
-  /// The MIME type for [filePath], or null when the extension is not an image
-  /// the backend accepts. Callers surface this as a "pick a different photo"
-  /// message rather than uploading and taking a 400.
-  static String? imageMimeTypeFor(String filePath) {
-    final dot = filePath.lastIndexOf('.');
-    if (dot < 0 || dot == filePath.length - 1) return null;
-    return supportedImageMimeTypes[filePath.substring(dot + 1).toLowerCase()];
-  }
-
   Future<Map<String, dynamic>> post(String path,
       {Map<String, dynamic>? body}) async {
     final requestBody = jsonEncode(body ?? <String, dynamic>{});

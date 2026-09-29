@@ -1,5 +1,6 @@
 import '../models/help_request.dart';
 import 'api_client.dart';
+import 'image_type.dart';
 
 /// Volunteer-facing calls against the real backend.
 ///
@@ -101,9 +102,16 @@ class RequestsService {
   /// `UNSUPPORTED_IMAGE_TYPE` for anything that is not a JPEG/PNG/WebP. The
   /// image is optional, so callers should treat a failure here as a warning
   /// rather than rolling back the request that was already created.
-  Future<String> uploadPhoto(String requestId, String filePath) async {
-    final mimeType = ApiClient.imageMimeTypeFor(filePath);
-    if (mimeType == null) {
+  Future<String> uploadPhoto(
+    String requestId,
+    String filePath, {
+    String? mimeType,
+  }) async {
+    final resolved = resolveImageMimeType(
+      filePath,
+      declaredMimeType: mimeType,
+    );
+    if (resolved == null) {
       throw const ApiException(
         code: 'UNSUPPORTED_IMAGE_TYPE',
         message: 'That photo is not a JPEG, PNG or WebP image',
@@ -114,7 +122,7 @@ class RequestsService {
       '/api/requests/$requestId/photo',
       field: 'photo',
       filePath: filePath,
-      mimeType: mimeType,
+      mimeType: resolved,
     );
 
     final photo = data['photo'];

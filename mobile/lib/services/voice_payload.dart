@@ -24,6 +24,7 @@ class VoiceHelpRequest {
     this.priority = 'normal',
     this.details,
     this.imagePath,
+    this.imageMimeType,
   });
 
   /// Currently expected envelope schema version (agent's PAYLOAD_VERSION).
@@ -42,6 +43,14 @@ class VoiceHelpRequest {
   /// image goes up separately as multipart to `POST /api/requests/:id/photo`
   /// once the server has handed back the new request id.
   final String? imagePath;
+
+  /// What the platform said [imagePath] actually is, resolved once when the
+  /// photo was picked.
+  ///
+  /// Kept beside [imagePath] because the picked file lives in the picker's
+  /// cache under a name that may not carry a usable extension, so the upload
+  /// has to reuse this rather than guess again from the name.
+  final String? imageMimeType;
 
   /// Accepts either the v1 envelope
   /// `{ v, type, request_id, request: {...} }` or a bare legacy payload
@@ -97,6 +106,7 @@ class VoiceHelpRequest {
     String? priority,
     Map<String, dynamic>? details,
     String? imagePath,
+    String? imageMimeType,
     bool clearImage = false,
   }) {
     return VoiceHelpRequest(
@@ -106,6 +116,7 @@ class VoiceHelpRequest {
       priority: VoiceHelpRequest._priorityOf(priority ?? this.priority),
       details: details ?? this.details,
       imagePath: clearImage ? null : (imagePath ?? this.imagePath),
+      imageMimeType: clearImage ? null : (imageMimeType ?? this.imageMimeType),
     );
   }
 
