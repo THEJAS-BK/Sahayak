@@ -245,7 +245,7 @@ export const Monitoring: React.FC = () => {
                 <TableRow
                   key={req.id}
                   onClick={() => navigate(`/requests/${req.id}`)}
-                  className="cursor-pointer hover:bg-gray-50 transition-colors"
+                  style={{ cursor: 'pointer' }}
                 >
                   <TableCell>
                     <span className="font-medium text-[var(--color-text-secondary)]">{req.id.slice(0, 8)}</span>
@@ -253,7 +253,7 @@ export const Monitoring: React.FC = () => {
                   <TableCell>
                     <span className="font-semibold text-gray-900">{req.senior.full_name ?? req.senior.email ?? 'Unknown'}</span>
                   </TableCell>
-                  <TableCell className="text-gray-600 font-medium">
+                  <TableCell style={{ color: '#4B5563', fontWeight: 500 }}>
                     {categoryLabels[req.category] ?? req.category}
                   </TableCell>
                   <TableCell>
