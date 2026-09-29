@@ -240,6 +240,13 @@ cd backend && npm test            # blocked: needs DATABASE_URL_TEST, see below
 cd web && npm run typecheck && npm run lint && npm run build
 ```
 
+> `web`'s `typecheck` and `build` pass `--force` to `tsc -b` deliberately. A
+> plain `tsc -b` is incremental and exits 0 off a stale `tsbuildinfo` **without
+> checking the files you changed** — which is how five files stayed broken in the
+> tree while this command reported success. If you run `tsc -b` by hand here,
+> add `--force` or delete the `.tsbuildinfo` files. This was fixed in `bc6eaab`;
+> the breakage itself had been in the tree since `368bbe5`.
+
 `backend/tests/police-overview.test.ts` is new in the second pass and is written
 but **not yet executed** — `backend/.env` has `DATABASE_URL_TEST=` empty, and the
 suite guards against running against the shared Neon database because it truncates

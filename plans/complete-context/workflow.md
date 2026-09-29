@@ -49,6 +49,8 @@ The core loop — raised by a senior, fulfilled by a volunteer.
 Senior raises request
    • voice: "Click to Speak" (flow 4)  or  app form   → POST /api/requests
        status = PENDING
+   • optional photo, chosen in the review dialog
+       → POST /api/requests/:id/photo   (multipart, only once :id is known)
 Backend (help-request service):
    PENDING ──scheduler──► MATCHING ──> DISPATCHED ──> ACCEPTED ──> IN_PROGRESS ──> COMPLETED
                                                        └──(mobile PATCH :id/accept)
@@ -62,6 +64,12 @@ Backend (help-request service):
 - Senior-facing volunteer reveal only from ACCEPTED onward
   (`ASSIGNMENT_STATUSES`).
 - Every transition is appended to `audit_logs` and surfaces on the portal.
+- **The photo is a separate, optional call made after the request exists**, not
+  part of the create body — the request id is not known until `POST /api/requests`
+  has answered. It may be sent for any request the senior still owns that is
+  neither cancelled nor completed, so it can land before or after dispatch. If
+  it fails the request is unaffected; every payload reports `has_photo` so a
+  photo-less request is distinguishable from a failed upload.
 
 ---
 

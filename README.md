@@ -9,7 +9,7 @@ with volunteers and local emergency services.
 |---|---|---|---|
 | `mobile/` | Senior & volunteer app (incl. voice assistant) | Flutter (Dart) | Auth, requests & LiveKit voice wired |
 | `web/` | Police administration portal | React + Vite + TypeScript | Connected to the backend API |
-| `backend/` | API server (single modular app) | Node.js + Express + TypeScript + Postgres | Complete |
+| `backend/` | API server (single modular app) | Node.js + Express + TypeScript + Postgres + Cloudinary | Complete |
 | `livekit-voice-agent/` | Conversational voice agent | Python (livekit-agents) | STT/LLM/TTS voice pipeline |
 | `data/` | Hand-curated dummy payloads | JSON | Mirrors `plans/api-plan.md` contracts |
 
@@ -103,6 +103,8 @@ Copy `.env.example` to `.env` and edit. Key variables:
 | `DISPATCH_TIMEOUT_S` | `90` | Stale dispatch re-try window (seconds) |
 | `MAX_DISPATCH_ATTEMPTS` | `3` | Retries before `UNASSIGNED` |
 | `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` | (empty) | Voice agent (LiveKit) credentials |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | (empty) | Request photo uploads. **Optional** — the server boots without them, but every upload then fails with `IMAGE_UPLOAD_UNAVAILABLE` |
+| `CLOUDINARY_FOLDER` | `sahayak` | Cloudinary folder that request photos are written to |
 | `SMTP_*` | (empty) | Required only in `NODE_ENV=production` |
 
 ### Health check
@@ -148,7 +150,7 @@ Other scripts:
 
 ```bash
 npm run build       # type-check + production build to dist/
-npm run typecheck   # type-check only (tsc -b, the real check; plain tsc --noEmit is a no-op here)
+npm run typecheck   # type-check only (tsc -b --force; --force matters, see below)
 npm run preview     # preview the production build
 npm run lint        # lint source with oxlint
 ```
@@ -156,6 +158,12 @@ npm run lint        # lint source with oxlint
 
 > The portal targets `http://localhost:3000/api` by default; override with the
 > `VITE_API_URL` env var if your backend lives elsewhere.
+
+> **`typecheck` and `build` pass `--force` to `tsc -b` on purpose.** `tsc -b` is
+> incremental: with a stale `tsbuildinfo` it exits 0 *without checking the
+> changed files*. That is not hypothetical — a stale cache let a build broken
+> in five files report success for several commits. If you ever invoke `tsc -b`
+> by hand to check this app, add `--force`, or delete the `.tsbuildinfo` files.
 
 ### Pages
 
@@ -228,7 +236,8 @@ client:
 
 - `data/mobile/` — payloads for the senior/volunteer Flutter app
   (auth, registrations incl. `aadhaar_number`/`club_id`, help requests, nearby
-  requests, emergencies, `/me`).
+  requests, emergencies, `/me`, and `request-photo.json` for the Q-09 upload —
+  the one call that is not JSON).
 - `data/web/` — payloads for the police/admin portal
   (dashboard, verifications, help requests, senior profiles, emergencies,
   audit logs).

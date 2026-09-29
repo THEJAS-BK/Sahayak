@@ -50,6 +50,8 @@ them with **volunteers** and local **police/emergency services**:
 ```
 
 Every client talks only to the backend over `{ success, data, error }` JSON.
+The one exception is `POST /requests/:id/photo`, which is a
+`multipart/form-data` upload; the response envelope is unchanged.
 The voice agent talks audio to the mobile app through LiveKit, and structured
 help requests flow from the agent back to the app over LiveKit's **data
 channel** (`sahayak_request` topic), which the app forwards to `POST /api/requests`.
@@ -63,7 +65,8 @@ channel** (`sahayak_request` topic), which the app forwards to `POST /api/reques
 | `refresh_tokens` | Long-lived session rotation (`POST /api/auth/refresh`). |
 | `user_verifications` | Pending/approved/rejected registration applications + `form_data`. |
 | `senior_profiles`, `volunteer_profiles` | Verified profile details, home/base coords, availability, live location. |
-| `help_requests` | Request lifecycle + dispatch state + assigned volunteer. |
+| `help_requests` | Request lifecycle + dispatch state + assigned volunteer + the photo URL. |
+| *(Cloudinary, not Postgres)* | Request photo bytes. Only the URL is stored here. |
 | `emergency_events` | SOS events, escalated to 112, status `LOGGED` → `REVIEWED`. |
 | `audit_logs` | Append-only audit trail for every state change. |
 
@@ -80,6 +83,9 @@ channel** (`sahayak_request` topic), which the app forwards to `POST /api/reques
 - `PATCH /requests/:id/accept | /status | /cancel`, `GET /requests/:id/volunteer`.
 - `POST /emergency-events`, `PATCH /volunteers/me/location | /availability`.
 - `POST /voice-sessions` — LiveKit join token for a fresh voice room.
+- `POST /requests/:id/photo` — attach a photo (multipart, field `photo`).
+  Returns `image_url`; there is no image GET, and `image_url` + `has_photo` ride
+  along on every request payload instead.
 
 ### Police (web portal)
 - `GET /police/requests` — live view with full PII (senior + volunteer).
@@ -87,6 +93,9 @@ channel** (`sahayak_request` topic), which the app forwards to `POST /api/reques
 - `GET /verifications`, `PATCH /verifications/:id` (approve/reject).
 - `GET /police/emergency-events`, `PATCH /police/emergency-events/:id` (review).
 - `GET /audit-logs` — recent activity feed for the dashboard.
+- Police see a request's photo through `image_url` on the requests they already
+  fetch (`GET /police/requests`, `GET /requests/:id`); there is no
+  police-specific photo endpoint.
 
 ## 6. Personas & seed data
 
@@ -149,6 +158,11 @@ cd livekit-voice-agent && uv sync && uv run agent.py dev
   `10.0.2.2`, else `localhost`), see `mobile/lib/config/app_config.dart`.
 - **Backend → Voice:** `LIVEKIT_URL/API_KEY/API_SECRET` from `backend/.env`;
   `POST /api/voice-sessions` mints per-room join tokens.
+- **Backend → Cloudinary:** `CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET` and
+  `CLOUDINARY_FOLDER` (default `sahayak`) from `backend/.env`. These are the
+  only settings that are **not** validated at boot: leave them out and the server
+  starts normally, but every photo upload fails with a 503
+  `IMAGE_UPLOAD_UNAVAILABLE` while the rest of the API carries on.
 - **OTP in dev:** `OTP_DEV_CODE=123456` — every issued code is this value.
 
 ## 10. Where to look next

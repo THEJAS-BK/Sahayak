@@ -1,0 +1,90 @@
+{
+  "_note": [
+    "Q-09 is the only endpoint in the API that is not JSON. It is a",
+    "multipart/form-data upload with a single part named `photo`; the",
+    "response is still the usual { success, data, error } envelope.",
+    "The bytes go straight to Cloudinary and never touch Postgres — only",
+    "the delivery URL is stored, on help_requests.image_url.",
+    "",
+    "`image_url` and `has_photo` are returned on every request payload",
+    "(Q-02, Q-03, Q-04, P-01), so there is no image GET endpoint to call:",
+    "render image_url directly when has_photo is true.",
+    "",
+    "The URL is public. Anyone holding it can fetch the photo, so it should",
+    "not be treated as access-controlled."
+  ],
+
+  "attach_photo": {
+    "method": "POST",
+    "path": "/api/requests/req-1024/photo",
+    "content_type": "multipart/form-data; boundary=...",
+    "auth": "senior, and only on their own request",
+    "parts": [
+      {
+        "name": "photo",
+        "filename": "photo.jpg",
+        "content_type": "image/jpeg",
+        "constraints": "image/jpeg, image/png or image/webp; 5 MB max"
+      }
+    ],
+    "response": {
+      "success": true,
+      "data": {
+        "photo": {
+          "request_id": "req-1024",
+          "image_url": "https://res.cloudinary.com/example-cloud/image/upload/v1750000000/sahayak/sample-photo.jpg",
+          "size_bytes": 184320
+        }
+      }
+    }
+  },
+
+  "_error_shapes": {
+    "400 NO_IMAGE": "the part was missing or named something other than `photo`",
+    "400 UNSUPPORTED_IMAGE_TYPE": "not jpeg, png or webp",
+    "400 PHOTO_TOO_LARGE": "over 5 MB",
+    "400 UPLOAD_FAILED": "Cloudinary rejected the upload. Note this is reported as a client error although the cause is server-side",
+    "401 UNAUTHENTICATED": "no session",
+    "404 NOT_FOUND": "not the caller's request, or it does not exist — answered identically so the endpoint cannot be used to probe which ids are real",
+    "409 INVALID_STATE": "the request is cancelled or completed",
+    "503 IMAGE_UPLOAD_UNAVAILABLE": "the server has no Cloudinary credentials; the rest of the API is unaffected"
+  },
+
+  "_ordering": [
+    "The photo cannot be part of the Q-01 create body: the request id is",
+    "not known until Q-01 has answered. Clients create the request first,",
+    "then upload with the returned request_id.",
+    "",
+    "A failed upload does not roll the request back and must not trigger a",
+    "resend — resending trips BR-13 (one open request per senior) and would",
+    "tell a senior who has already been dispatched that they have a",
+    "duplicate. Report it in the UI and leave the request alone.",
+    "",
+    "The ownership check runs before the body is read, so a rejected upload",
+    "never reaches Cloudinary."
+  ],
+
+  "request_with_photo": {
+    "id": "req-1024",
+    "category": "grocery_assistance",
+    "description": "Need help buying groceries for the week",
+    "status": "IN_PROGRESS",
+    "has_photo": true,
+    "image_url": "https://res.cloudinary.com/example-cloud/image/upload/v1750000000/sahayak/sample-photo.jpg",
+    "priority": "normal",
+    "source": "voice_agent",
+    "created_at": "2026-09-17T18:42:00Z"
+  },
+
+  "request_without_photo": {
+    "id": "req-1010",
+    "category": "medical_assistance",
+    "description": "Need a ride to the clinic for a check-up",
+    "status": "COMPLETED",
+    "has_photo": false,
+    "image_url": null,
+    "priority": "urgent",
+    "source": "flutter_app",
+    "created_at": "2026-09-12T08:15:00Z"
+  }
+}

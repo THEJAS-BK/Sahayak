@@ -3,7 +3,8 @@
 > Status: **Implemented.** All contracts below are live and test-covered. As-built
 > deviations are logged in `decisions.md`.
 
-Base path `/api`. JSON in/out. See §Conventions below, then the endpoint table,
+Base path `/api`. JSON in/out, with one exception: `Q-09` is a
+`multipart/form-data` upload. See §Conventions below, then the endpoint table,
 then the contracts that need pinning down.
 
 ## Conventions
@@ -17,7 +18,9 @@ then the contracts that need pinning down.
   (BR-01) middleware; ownership checks per endpoint.
 - Every state-changing write appends an `audit_logs` row in the same
   transaction. System-generated events (dispatch sweep) write `actor_id = NULL`.
-- Zod validation at the route boundary before any business logic.
+- Zod validation at the route boundary before any business logic. `Q-09` is the
+  exception: it has no JSON body to parse, so multer's `fileFilter` validates
+  the part instead.
 
 ## Endpoint table
 
@@ -44,6 +47,7 @@ then the contracts that need pinning down.
 | Q-06 | PATCH | `/api/requests/:id/status` | required | volunteer | → IN_PROGRESS / COMPLETED |
 | Q-07 | PATCH | `/api/requests/:id/cancel` | required | senior | Cancel before ACCEPTED |
 | Q-08 | GET | `/api/requests/:id/volunteer` | required | senior | Assigned volunteer contact |
+| Q-09 | POST | `/api/requests/:id/photo` | required | senior | Attach/replace a photo (multipart, field `photo`; returns `image_url`) |
 | L-01 | PATCH | `/api/volunteers/me/location` | required | volunteer | Update live location |
 | L-02 | PATCH | `/api/volunteers/me/availability` | required | volunteer | Toggle `is_available` |
 | E-01 | POST | `/api/emergency-events` | required | senior | Log distress immediately |
@@ -155,6 +159,28 @@ Vitest suite. Two body/response notes worth keeping in mind (details in
   (else 403). Returns only `{ full_name, phone_number, organization, skills }`.
   Single exposure point for a volunteer's phone (BR-08).
 
+### Q-09 POST /api/requests/:id/photo
+- `multipart/form-data`, single part named `photo`. The only non-JSON call in
+  the API.
+- `image/jpeg`, `image/png` or `image/webp` only, 5 MB max. Anything else is
+  `400 UNSUPPORTED_IMAGE_TYPE` / `PHOTO_TOO_LARGE`; a missing part is
+  `400 NO_IMAGE`. A Cloudinary rejection surfaces as `400 UPLOAD_FAILED`, which
+  is arguably the wrong status — the cause is server-side — but it is what the
+  route does today.
+- Bytes are streamed to Cloudinary by multer and never touch Postgres. Only the
+  delivery URL is stored, on `help_requests.image_url`, alongside a server-only
+  `image_public_id` that exists so a later replace can delete the asset it
+  supersedes. Returns `201 { photo: { request_id, image_url, size_bytes } }`.
+- Ownership is checked **before** the body is read, so an upload for someone
+  else's request answers `404` and nothing is ever sent to Cloudinary. If the
+  database write then fails, the just-uploaded asset is destroyed.
+- **There is no image GET endpoint.** `image_url` and `has_photo` ride along on
+  every request payload (Q-02, Q-03, Q-04, P-01), and the URL is public, so
+  clients render it directly.
+- Cloudinary credentials are deliberately *not* validated at boot. If they are
+  absent the route answers `503 IMAGE_UPLOAD_UNAVAILABLE` and the rest of the
+  API is unaffected.
+
 ### L-01 PATCH /api/volunteers/me/location
 - Body: `{ latitude, longitude }`. Only while an active assignment exists
   (BR-09), else 403. Updates `current_*`, `location_updated_at`.
@@ -245,4 +271,11 @@ PORT, NODE_ENV, DATABASE_URL, JWT_SECRET, JWT_ACCESS_TTL (15m),
 JWT_REFRESH_TTL (90d), MATCH_RADIUS_M, DISPATCH_BATCH_SIZE,
 DISPATCH_TIMEOUT_S, MAX_DISPATCH_ATTEMPTS   # always required
 SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM,
+```
+
+Optional — parsed but never required, so a deployment without them still boots:
+
+```
+CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET,
+CLOUDINARY_FOLDER (sahayak)   # Q-09; absent => 503 IMAGE_UPLOAD_UNAVAILABLE
 ```
