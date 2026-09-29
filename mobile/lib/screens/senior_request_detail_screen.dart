@@ -143,6 +143,7 @@ class _SeniorRequestDetailScreenState extends State<SeniorRequestDetailScreen> {
       backgroundColor: AppColors.scaffold,
       appBar: SahayakAppBar(
         subtitle: 'Request ${_shortId(request.id)}',
+        showBack: true,
         showActions: false,
       ),
       body: SafeArea(

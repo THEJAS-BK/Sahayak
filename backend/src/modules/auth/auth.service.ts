@@ -65,20 +65,20 @@ export async function verifyOtpAndIssueTokens(emailInput: string, code: string):
   const unused = await findUnusedCode(pool, email)
   if (!unused) {
     await recordAttempt(pool, email, false)
-    throw errors.unauthorized('Invalid or expired code')
+    throw errors.invalidOtp()
   }
 
   const matches = await bcrypt.compare(code, unused.code_hash)
   if (!matches) {
     await recordAttempt(pool, email, false)
-    throw errors.unauthorized('Invalid or expired code')
+    throw errors.invalidOtp()
   }
 
   const user = await upsertUserByEmail(email)
 
   return withTransaction(async (db) => {
     const consumed = await consumeCode(db, unused.id)
-    if (!consumed) throw errors.unauthorized('Invalid or expired code')
+    if (!consumed) throw errors.invalidOtp()
     await recordAttempt(db, email, true)
 
     if (user.role === 'police') {

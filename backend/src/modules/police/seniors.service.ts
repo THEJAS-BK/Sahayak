@@ -125,10 +125,20 @@ export async function getSeniorDetail(
   db: Queryable,
   userId: string,
 ): Promise<Record<string, unknown> | null> {
+  // The three derived fields below have to be computed exactly as listSeniors
+  // computes them: the console renders the detail page from the same shape as
+  // the list row, and a detail response missing `is_verified` /
+  // `verification_status` / `request_count` shows an approved senior as
+  // "not approved" with an empty badge.
   const senior = await db.query(
     `SELECT u.id, u.email, u.is_active, u.created_at,
             sp.full_name, sp.phone_number, sp.home_latitude, sp.home_longitude,
-            sp.preferred_language, sp.emergency_contact, sp.aadhaar_number
+            sp.preferred_language, sp.emergency_contact, sp.aadhaar_number,
+            EXISTS (SELECT 1 FROM user_verifications uv
+                     WHERE uv.user_id = u.id AND uv.status = 'APPROVED') AS is_verified,
+            (SELECT uv.status FROM user_verifications uv
+              WHERE uv.user_id = u.id ORDER BY uv.created_at DESC LIMIT 1) AS verification_status,
+            (SELECT count(*)::int FROM help_requests hr WHERE hr.senior_id = u.id) AS request_count
      FROM users u
      LEFT JOIN senior_profiles sp ON sp.user_id = u.id
      WHERE u.id = $1 AND u.role = 'senior'`,
@@ -179,6 +189,9 @@ export async function getSeniorDetail(
     home_latitude: numeric(s.home_latitude),
     home_longitude: numeric(s.home_longitude),
     preferred_language: s.preferred_language,
+    is_verified: Boolean(s.is_verified),
+    verification_status: s.verification_status ?? 'NONE',
+    request_count: s.request_count,
     emergency_contact: s.emergency_contact ?? null,
     created_at: s.created_at,
     verifications: verifications.rows.map((v) => ({

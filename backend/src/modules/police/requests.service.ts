@@ -118,8 +118,18 @@ export interface PoliceAssignmentResult {
   request_id: string
   status: 'DISPATCHED'
   category: string
-  volunteer: { id: string; full_name: string | null; phone_number: string | null; email: string; fcm_token: string | null }
-  senior: { id: string; full_name: string | null; phone_number: string | null; email: string; fcm_token: string | null }
+  volunteer: { id: string; full_name: string | null; phone_number: string | null; email: string }
+  senior: { id: string; full_name: string | null; phone_number: string | null; email: string }
+  /**
+   * Device push tokens for the two people involved, kept out of the HTTP body.
+   * A push token is a delivery credential for someone's device; the police
+   * console has no use for it, and the console is a browser. The route passes
+   * this to the notifier and responds with everything else.
+   */
+  notify: {
+    volunteer: { email: string; fcmToken: string | null; fullName: string | null }
+    senior: { email: string; fcmToken: string | null }
+  }
 }
 
 /**
@@ -269,14 +279,20 @@ export async function assignRequestToVolunteer(
       full_name: volunteer.full_name,
       phone_number: volunteer.phone_number,
       email: volunteer.email,
-      fcm_token: volunteer.fcm_token,
     },
     senior: {
       id: request.senior_id,
       full_name: request.senior_name,
       phone_number: request.senior_phone,
       email: request.senior_email,
-      fcm_token: request.senior_fcm,
+    },
+    notify: {
+      volunteer: {
+        email: volunteer.email,
+        fcmToken: volunteer.fcm_token,
+        fullName: volunteer.full_name,
+      },
+      senior: { email: request.senior_email, fcmToken: request.senior_fcm },
     },
   }
 }

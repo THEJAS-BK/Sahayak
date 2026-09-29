@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../services/api_client.dart';
+import '../services/registration_service.dart';
 import '../services/session_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/primary_button.dart';
+import 'registration_submitted_screen.dart';
 import 'role_selection_screen.dart';
 import 'volunteer_home_screen.dart';
 import 'senior_home_screen.dart';
@@ -72,11 +74,12 @@ class _OtpScreenState extends State<OtpScreen> {
           (route) => false,
         );
       } else {
-        // New user (no role yet) → choose volunteer vs senior, then register.
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
-        );
+        // No role yet. `role` is only written when police approve a
+        // verification, so it stays null for the whole pending window — which
+        // means an empty role covers both a brand-new account and one whose
+        // registration is still being reviewed. Ask which it is, or a pending
+        // user is sent back into registration and dead-ends on a 409.
+        await _routeUnassigned();
       }
     } on ApiException catch (e) {
       if (mounted) {
@@ -94,6 +97,45 @@ class _OtpScreenState extends State<OtpScreen> {
         );
       }
     }
+  }
+
+  /// Sends a signed-in user with no role to either the pending-status screen or
+  /// role selection. Falls back to role selection when the lookup fails, since
+  /// that is the only branch that can still make progress.
+  Future<void> _routeUnassigned() async {
+    if (mounted) setState(() => _isVerifying = false);
+
+    UserRole? pendingRole;
+    try {
+      final verification = await RegistrationService.instance.myVerification();
+      if (verification != null) {
+        pendingRole = switch (verification.role) {
+          'volunteer' => UserRole.volunteer,
+          'senior' => UserRole.senior,
+          _ => null,
+        };
+      }
+    } catch (_) {
+      // Treat an unreachable or unauthorised API as "no verification known".
+    }
+    if (!mounted) return;
+
+    if (pendingRole != null) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => RegistrationSubmittedScreen(role: pendingRole!),
+        ),
+      );
+      return;
+    }
+
+    // Brand-new account, or a REJECTED one that may re-register — choose a role
+    // and fill in the form.
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+    );
   }
 
   @override

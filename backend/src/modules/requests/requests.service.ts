@@ -134,7 +134,8 @@ export async function createRequest(
 export async function listMyRequests(db: Queryable, user: { id: string; role: string }): Promise<unknown[]> {
   const where = user.role === 'senior' ? 'hr.senior_id = $1' : 'hr.assigned_volunteer_id = $1'
   const res = await db.query(
-    `SELECT hr.*, vp.full_name AS assigned_volunteer_name
+    `SELECT hr.*, vp.full_name AS assigned_volunteer_name,
+            EXISTS(SELECT 1 FROM request_photos rp WHERE rp.request_id = hr.id) AS has_photo
      FROM help_requests hr
      LEFT JOIN volunteer_profiles vp ON vp.user_id = hr.assigned_volunteer_id
      WHERE ${where}
@@ -145,6 +146,7 @@ export async function listMyRequests(db: Queryable, user: { id: string; role: st
     const row = shapeRow(r)
     // The alias is only a carrier for the nested object below.
     delete row.assignedVolunteerName
+    row.has_photo = r.has_photo === true
     row.assigned_volunteer = r.assigned_volunteer_id
       ? { id: r.assigned_volunteer_id, full_name: r.assigned_volunteer_name ?? null }
       : null
@@ -154,9 +156,18 @@ export async function listMyRequests(db: Queryable, user: { id: string; role: st
 
 async function loadRequest(db: Queryable, id: string) {
   const res = await db.query(
+<<<<<<< Updated upstream
     `SELECT hr.*, s.full_name AS senior_full_name, s.phone_number AS senior_phone, s.home_latitude, s.home_longitude,
-            vp.full_name AS volunteer_full_name, vp.phone_number AS volunteer_phone, vp.organization, vp.skills
+            vp.full_name AS volunteer_full_name, vp.phone_number AS volunteer_phone, vp.organization, vp.skills,
+            EXISTS(SELECT 1 FROM request_photos rp WHERE rp.request_id = hr.id) AS has_photo
+=======
+    `SELECT hr.*, u.email AS senior_email,
+            s.full_name AS senior_full_name, s.phone_number AS senior_phone, s.home_latitude, s.home_longitude,
+            vp.full_name AS volunteer_full_name, vp.phone_number AS volunteer_phone,
+            vp.organization AS volunteer_organization, vp.skills AS volunteer_skills
+>>>>>>> Stashed changes
      FROM help_requests hr
+     JOIN users u ON u.id = hr.senior_id
      LEFT JOIN senior_profiles s ON s.user_id = hr.senior_id
      LEFT JOIN volunteer_profiles vp ON vp.user_id = hr.assigned_volunteer_id
      WHERE hr.id = $1`,
@@ -186,6 +197,11 @@ interface RequestRow {
   dispatched_at: Date | null
   dispatch_attempt: number
   dispatch_batch: unknown
+<<<<<<< Updated upstream
+  has_photo: boolean
+=======
+  senior_email: string
+>>>>>>> Stashed changes
   senior_full_name: string | null
   senior_phone: string | null
   volunteer_full_name: string | null
@@ -216,6 +232,7 @@ function projectRequest(row: RequestRow, role: string): Record<string, unknown> 
     cancelled_at: row.cancelled_at,
     dispatched_at: row.dispatched_at,
     dispatch_attempt: row.dispatch_attempt,
+    has_photo: row.has_photo === true,
   }
 
   if (role === 'senior') {
@@ -235,11 +252,26 @@ function projectRequest(row: RequestRow, role: string): Record<string, unknown> 
     }
   }
 
+  // Police see the full record, matching the shape of GET /police/requests so
+  // the console can render a detail page from the same types as a list row.
+  // The senior email and the volunteer's organization are deliberately absent
+  // from the two branches above.
   return {
     ...base,
-    senior: { id: row.senior_id, full_name: row.senior_full_name, phone_number: row.senior_phone },
+    dispatch_batch: row.dispatch_batch ?? null,
+    senior: {
+      id: row.senior_id,
+      email: row.senior_email,
+      full_name: row.senior_full_name,
+      phone_number: row.senior_phone,
+    },
     assigned_volunteer: row.assigned_volunteer_id
-      ? { id: row.assigned_volunteer_id, full_name: row.volunteer_full_name, phone_number: row.volunteer_phone }
+      ? {
+          id: row.assigned_volunteer_id,
+          full_name: row.volunteer_full_name,
+          phone_number: row.volunteer_phone,
+          organization: row.volunteer_organization,
+        }
       : null,
   }
 }
@@ -519,6 +551,7 @@ export async function nearbyRequests(
   const res = await db.query(
     `WITH nearby AS (
        SELECT hr.id, hr.category, hr.description, hr.latitude, hr.longitude, hr.priority, hr.created_at,
+              EXISTS(SELECT 1 FROM request_photos rp WHERE rp.request_id = hr.id) AS has_photo,
               6371000 * 2 * asin(sqrt(
                 power(sin(radians((hr.latitude - $1) / 2)), 2) +
                 cos(radians(hr.latitude)) * cos(radians($1)) *
@@ -550,6 +583,7 @@ export async function nearbyRequests(
     priority: r.priority,
     created_at: r.created_at,
     distance_m: numeric(r.distance_m),
+    has_photo: r.has_photo === true,
   }))
 }
 
@@ -559,6 +593,95 @@ export async function countOpenRequestsForSenior(db: Queryable, seniorId: string
     [seniorId, ACTIVE_STATUSES],
   )
   return (res.rowCount ?? 0) > 0
+}
+
+export const PHOTO_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
+
+/** Hard cap on the decoded image; the client compresses well below this. */
+export const MAX_PHOTO_BYTES = 4 * 1024 * 1024
+
+/**
+ * Q-09: attach (or replace) the photo on a request.
+ *
+ * Only the owning senior, only while the request is still live — a photo on a
+ * CANCELLED/COMPLETED request can no longer help a volunteer, and reopening
+ * the write path for closed requests would muddy the audit trail.
+ */
+export async function setRequestPhoto(
+  db: Queryable,
+  user: { id: string },
+  requestId: string,
+  photo: { contentType: string; data: Buffer },
+): Promise<{ request_id: string; content_type: string; size_bytes: number; created_at: string }> {
+  const res = await db.query('SELECT senior_id, status FROM help_requests WHERE id = $1', [requestId])
+  if (res.rowCount === 0) throw errors.notFound('Request not found')
+  const row = res.rows[0]
+
+  if (row.senior_id !== user.id) {
+    throw errors.forbidden('FORBIDDEN', 'Only the senior who created the request can attach a photo')
+  }
+  if (row.status === 'CANCELLED' || row.status === 'COMPLETED') {
+    throw errors.invalidState(`Cannot attach a photo to a request in state ${row.status}`)
+  }
+
+  const saved = await db.query(
+    `INSERT INTO request_photos (request_id, uploaded_by, content_type, data)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (request_id) DO UPDATE
+       SET uploaded_by = EXCLUDED.uploaded_by,
+           content_type = EXCLUDED.content_type,
+           data = EXCLUDED.data,
+           created_at = now()
+     RETURNING created_at`,
+    [requestId, user.id, photo.contentType, photo.data],
+  )
+
+  await writeAudit(db, {
+    actorId: user.id,
+    action: 'request.photo_added',
+    entityType: 'help_request',
+    entityId: requestId,
+    after: { content_type: photo.contentType, size_bytes: photo.data.length },
+  })
+
+  return {
+    request_id: requestId,
+    content_type: photo.contentType,
+    size_bytes: photo.data.length,
+    created_at: new Date(saved.rows[0].created_at).toISOString(),
+  }
+}
+
+/**
+ * Q-10: raw photo bytes for a request.
+ *
+ * Same visibility rule as Q-03: the owning senior, the assigned volunteer and
+ * police. Unrelated callers get 404, not 403, so the endpoint cannot be used
+ * to probe which request ids exist.
+ */
+export async function getRequestPhoto(
+  db: Queryable,
+  user: { id: string; role: string },
+  requestId: string,
+): Promise<{ contentType: string; data: Buffer }> {
+  const res = await db.query(
+    `SELECT hr.senior_id, hr.assigned_volunteer_id, rp.content_type, rp.data
+     FROM help_requests hr
+     LEFT JOIN request_photos rp ON rp.request_id = hr.id
+     WHERE hr.id = $1`,
+    [requestId],
+  )
+  if (res.rowCount === 0) throw errors.notFound('Request not found')
+  const row = res.rows[0]
+
+  const allowed =
+    user.role === 'police' ||
+    row.senior_id === user.id ||
+    (user.role === 'volunteer' && row.assigned_volunteer_id === user.id)
+  if (!allowed) throw errors.notFound('Request not found')
+
+  if (!row.content_type || !row.data) throw errors.notFound('No photo on this request')
+  return { contentType: row.content_type, data: row.data as Buffer }
 }
 
 export { ACTIVE_STATUSES }

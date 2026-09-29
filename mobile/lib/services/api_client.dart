@@ -156,11 +156,17 @@ class ApiClient {
         final user = data['user'] is Map<String, dynamic>
             ? data['user'] as Map<String, dynamic>
             : const <String, dynamic>{};
+        final accessToken = data['access_token']?.toString() ?? '';
+        // The refresh response carries `user: { id, role }` but no
+        // `is_active`, so a mid-session approval would otherwise never be
+        // picked up. The freshly issued access token does carry `is_active`
+        // (and `role`) as claims, so read them from there.
+        final claims = jwtClaims(accessToken);
         await SessionService.instance.updateTokens(
-          data['access_token']?.toString() ?? '',
+          accessToken,
           data['refresh_token']?.toString(),
           role: user['role']?.toString(),
-          isActive: user['is_active'] as bool?,
+          isActive: _boolClaim(claims, 'is_active'),
         );
         return true;
       }
@@ -169,6 +175,35 @@ class ApiClient {
     }
     await SessionService.instance.clear();
     return false;
+  }
+
+  /// Claims from a JWT payload, without verifying the signature.
+  ///
+  /// Only ever a local hint for keeping the cached session in step with the
+  /// server; the backend stays the authority on whether a token is valid. Used
+  /// because `/api/auth/refresh` omits `is_active` from its response while the
+  /// token it returns carries the claim.
+  static Map<String, dynamic>? jwtClaims(String token) {
+    final parts = token.split('.');
+    if (parts.length != 3) return null;
+    try {
+      final payload = parts[1].padRight((parts[1].length + 3) & ~3, '=');
+      final claims = jsonDecode(utf8.decode(base64Url.decode(payload)));
+      return claims is Map<String, dynamic> ? claims : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// A boolean JWT claim, or null when it is absent or not a boolean.
+  ///
+  /// Deliberately not a cast: a claim of an unexpected type must leave the
+  /// cached value alone, and a throwing cast here would be caught by [refresh]
+  /// and treated as a failed refresh, which clears a session that the server
+  /// had just renewed.
+  static bool? _boolClaim(Map<String, dynamic>? claims, String name) {
+    final value = claims?[name];
+    return value is bool ? value : null;
   }
 
   Map<String, dynamic> _decode(http.Response response) {

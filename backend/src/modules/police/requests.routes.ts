@@ -50,20 +50,15 @@ router.patch(
     if (!parsed.success) throw errors.badRequest('volunteer_id must be a UUID')
 
     const requestId = String(req.params.id)
-    const result = await withTransaction((db) =>
+    const { notify, ...body } = await withTransaction((db) =>
       assignRequestToVolunteer(db, req.user as { id: string }, requestId, parsed.data.volunteer_id),
     )
-    ok(res, result)
+    ok(res, body)
 
-    void notifyPoliceAssignment(
-      {
-        email: result.volunteer.email,
-        fcmToken: result.volunteer.fcm_token,
-        fullName: result.volunteer.full_name,
-      },
-      { email: result.senior.email, fcmToken: result.senior.fcm_token },
-      { id: result.request_id, category: result.category },
-    )
+    void notifyPoliceAssignment(notify.volunteer, notify.senior, {
+      id: body.request_id,
+      category: body.category,
+    })
   }),
 )
 

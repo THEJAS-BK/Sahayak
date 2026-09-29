@@ -54,3 +54,92 @@ a {
 button {
   font-family: inherit;
 }
+
+/* The app shell is a fixed-height frame; pages scroll inside <main>, not the body. */
+.app-shell {
+  height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  .app-shell {
+    height: 100dvh;
+  }
+}
+
+/* The sign-in screen is a full-viewport layout of its own, outside the shell. */
+.auth-screen {
+  min-height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  .auth-screen {
+    min-height: 100dvh;
+  }
+}
+
+/* Emergency markers on the GIS map pulse to draw dispatch attention. */
+@keyframes sahayak-marker-pulse {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.55;
+  }
+  70%,
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.sahayak-marker-pulse {
+  animation: sahayak-marker-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/*
+ * A pin is a positioned wrapper so the pulse ring can scale from the centre
+ * without distorting the solid dot, and so both share one hit box.
+ */
+.sahayak-pin {
+  position: relative;
+  width: 20px;
+  height: 20px;
+}
+
+.sahayak-pin .sahayak-marker-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+.sahayak-pin-dot {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.45);
+}
+
+/* Wins over Leaflet's own .leaflet-container rules, which are bundled after this file. */
+html .sahayak-map {
+  background: var(--color-surface-workspace);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+}
+
+/* Leaflet renders its own close button and popup chrome; tune them to the palette. */
+.leaflet-container .leaflet-popup-content-wrapper {
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-md);
+}
+
+.leaflet-container .leaflet-popup-content {
+  margin: 0.875rem 1rem;
+}
+
+.leaflet-container .leaflet-bar a {
+  color: var(--color-primary-navy);
+}
+
+.leaflet-container .leaflet-control-attribution {
+  font-size: 0.6875rem;
+  background: rgb(255 255 255 / 0.85);
+}

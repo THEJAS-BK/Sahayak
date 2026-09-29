@@ -80,7 +80,7 @@ export async function getVolunteerDetail(
   const assignments = await db.query(
     `SELECT hr.id AS request_id, hr.category, hr.status, hr.created_at,
             hr.dispatched_at, hr.accepted_at, hr.completed_at,
-            (b.value->>'id')::uuid AS offered_at,
+            (b.value->>'id')::uuid AS volunteer_id,
             (b.value->>'distance_m')::double precision AS distance_m,
             COALESCE(hr.assigned_volunteer_id = (b.value->>'id')::uuid, false) AS was_assigned,
             (rd.reason IS NOT NULL) AS declined

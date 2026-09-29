@@ -42,7 +42,10 @@ describe('auth', () => {
     await requestOtp(email)
     const res = await verify(email, '000000')
     expect(res.status).toBe(401)
-    expect(res.body.error.code).toBe('UNAUTHENTICATED')
+    // INVALID_OTP, not UNAUTHENTICATED: clients treat UNAUTHENTICATED as "your
+    // access token is dead" and sign the user out, which a mistyped code on the
+    // sign-in form must not do.
+    expect(res.body.error.code).toBe('INVALID_OTP')
   })
 
   it('A-02: a used code cannot be reused → 401 (BR-07)', async () => {

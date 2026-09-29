@@ -159,12 +159,21 @@ class _SeniorMyRequestsScreenState extends State<SeniorMyRequestsScreen> {
         return _RequestCard(
           request: r,
           categoryIcon: _categoryIcon(r.category),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => SeniorRequestDetailScreen(request: r),
-            ),
-          ),
+          onTap: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => SeniorRequestDetailScreen(
+                  request: r,
+                  // The detail screen can cancel the request, and a volunteer
+                  // may accept while it is open, so re-read on the way back
+                  // rather than leaving a stale status on the card.
+                  onChanged: _load,
+                ),
+              ),
+            );
+            _load();
+          },
         );
       },
     );

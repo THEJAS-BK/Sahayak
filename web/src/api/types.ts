@@ -118,6 +118,19 @@ export interface VerificationListResult {
   next_cursor: string | null;
 }
 
+/** V-02: one registration's submitted form and review trail. */
+export interface VerificationDetail {
+  id: string;
+  user_id: string;
+  role: VerificationRole;
+  form_data: Record<string, unknown>;
+  status: VerificationStatus;
+  created_at: string;
+  reviewed_at: string | null;
+  review_reason: string | null;
+  user: { id: string; email: string };
+}
+
 export interface AuditLog {
   id: string;
   actor_id: string | null;
@@ -270,6 +283,20 @@ export interface CurrentUser {
   email: string;
   role: string | null;
   is_active: boolean;
+  verification_status?: string;
+}
+
+/** P-08: `GET /police/overview`. Every Dashboard tile, counted in SQL. */
+export interface PoliceOverview {
+  open_requests: number;
+  active_operations: number;
+  unassigned_requests: number;
+  urgent_requests: number;
+  completed_today: number;
+  emergencies_awaiting_review: number;
+  verifications_pending: number;
+  volunteers_available: number;
+  generated_at: string;
 }
 
 export type PriorityLabel = 'URGENT' | 'NORMAL';

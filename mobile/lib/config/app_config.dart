@@ -24,4 +24,17 @@ class AppConfig {
     }
     return 'http://localhost:3000';
   }
+
+  /// The coordinates both registration forms open with.
+  ///
+  /// A senior and a volunteer created through the app start on the same point,
+  /// so a request either one raises is always inside the backend's
+  /// `MATCH_RADIUS_M` (5 km) without anyone hand-typing coordinates. These
+  /// match the fixed point `backend/scripts/e2e-real-flow.ts` uses, so accounts
+  /// made in the app sit in the same place as the ones the e2e flow makes.
+  ///
+  /// Only a starting point: the fields stay editable for anyone testing a
+  /// specific spot.
+  static const double defaultLatitude = 12.9716;
+  static const double defaultLongitude = 77.5946;
 }
