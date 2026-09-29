@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Users, AlertTriangle, ShieldCheck, Settings, LogOut, ListChecks, ScrollText } from 'lucide-react';
+import { LayoutDashboard, Users, AlertTriangle, ShieldCheck, Settings, LogOut, ListChecks, ScrollText, Map as MapIcon, Activity } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { clearSession } from '../../api/client';
 
@@ -13,10 +13,12 @@ export const Sidebar: React.FC = () => {
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
     { icon: ListChecks, label: 'Requests', path: '/requests' },
+    { icon: Activity, label: 'Monitoring', path: '/monitoring' },
     { icon: ShieldCheck, label: 'Verification', path: '/verification' },
     { icon: AlertTriangle, label: 'Emergencies', path: '/emergencies' },
     { icon: Users, label: 'Seniors', path: '/seniors' },
     { icon: Users, label: 'Volunteers', path: '/volunteers' },
+    { icon: MapIcon, label: 'Map', path: '/map' },
     { icon: ScrollText, label: 'Audit Logs', path: '/audit-logs' },
   ];
 

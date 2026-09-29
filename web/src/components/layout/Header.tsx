@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, Search, User } from 'lucide-react';
+import { Bell, User } from 'lucide-react';
 import { fetchCurrentUser } from '../../api/client';
 import type { CurrentUser } from '../../api/types';
 
