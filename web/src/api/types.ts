@@ -41,6 +41,13 @@ export interface PoliceRequest {
   dispatch_attempt?: number;
   /** Snapshot of who the request was offered to. Empty means nobody was in range. */
   dispatch_batch?: Array<{ id: string; latitude?: number; longitude?: number; distance_m?: number }> | null;
+  /**
+   * Cloudinary URL of the photo the senior attached, or null when they did not.
+   * Served straight from the CDN, so it renders in an `<img src>` with no
+   * backend round trip — but it is also, unavoidably, a public link.
+   */
+  image_url: string | null;
+  has_photo: boolean;
   created_at: string;
   updated_at: string;
   dispatched_at?: string | null;

@@ -1,25 +1,25 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { config } from '../../config/index.js'
+import cloudinary from '../../config/cloudinary.js'
 import { errors } from '../../lib/errors.js'
 import { asyncHandler, ok } from '../../lib/http.js'
 import { logger } from '../../lib/logger.js'
 import { pool, withTransaction } from '../../database/pool.js'
 import { authenticate, requireActive, requireRole } from '../../middleware/auth.js'
+import { requireCloudinary, uploadImageField } from '../../middleware/upload.js'
 import { notifyDispatch, notifyRequestAccepted, notifyRequestStatus } from '../notifications/request.js'
 import {
   acceptRequest,
+  assertCanSetRequestImage,
   cancelRequest,
   createRequest,
   declineRequest,
   getRequest,
-  getRequestPhoto,
   getVolunteerContact,
   listMyRequests,
-  MAX_PHOTO_BYTES,
   nearbyRequests,
-  PHOTO_CONTENT_TYPES,
-  setRequestPhoto,
+  setRequestImage,
   updateRequestStatus,
 } from './requests.service.js'
 
@@ -253,57 +253,73 @@ router.get(
   }),
 )
 
-const photoSchema = z.object({
-  content_type: z.enum(PHOTO_CONTENT_TYPES),
-  // ~4 MB decoded ≈ 5.6 M base64 chars; a little headroom, hard cap below.
-  data_base64: z.string().min(1).max(6_000_000),
-})
-
-/** Q-09 — attach/replace the photo on the caller's own open request. */
+/**
+ * Q-09 — attach or replace the photo on the caller's own request.
+ *
+ * `multipart/form-data` on the `photo` field; multer streams it straight to
+ * Cloudinary and only the resulting URL is written to Postgres. There is no
+ * companion GET: the stored URL is the image, and it rides along on every
+ * request payload as `image_url` so clients render it without a second call.
+ */
 router.post(
   '/:id/photo',
   authenticate,
   requireRole('senior'),
   requireActive,
+  requireCloudinary,
+  // Authorise *before* the body is read. Uploading first would let any senior
+  // fill the Cloudinary account by pointing this at a request that is not
+  // theirs, since the 403 would only arrive once the bytes were already gone.
+  asyncHandler(async (req, _res, next) => {
+    await assertCanSetRequestImage(pool, req.user as { id: string }, String(req.params.id))
+    next()
+  }),
+  uploadImageField,
   asyncHandler(async (req, res) => {
-    const parsed = photoSchema.safeParse(req.body)
-    if (!parsed.success) throw errors.badRequest('Invalid photo payload')
-
-    const data = Buffer.from(parsed.data.data_base64, 'base64')
-    if (data.length === 0) throw errors.badRequest('Photo data could not be decoded')
-    if (data.length > MAX_PHOTO_BYTES) {
-      throw errors.badRequest(
-        `Photo must be ${Math.floor(MAX_PHOTO_BYTES / (1024 * 1024))} MB or smaller`,
-        'PHOTO_TOO_LARGE',
-      )
+    const file = req.file
+    if (!file) {
+      throw errors.badRequest('No image was uploaded (expected a "photo" file field)', 'NO_IMAGE')
     }
 
     const id = String(req.params.id)
-    const photo = await withTransaction((db) =>
-      setRequestPhoto(db, req.user as { id: string }, id, {
-        contentType: parsed.data.content_type,
-        data,
-      }),
+    let photo: Awaited<ReturnType<typeof setRequestImage>>
+    try {
+      photo = await withTransaction((db) =>
+        setRequestImage(db, req.user as { id: string }, id, {
+          url: file.path,
+          publicId: file.filename,
+          sizeBytes: file.size,
+        }),
+      )
+    } catch (err) {
+      // The image is already in Cloudinary but nothing points at it. Delete it
+      // rather than leaving an unreferenced asset costing storage forever.
+      void destroyCloudinaryAsset(file.filename)
+      throw err
+    }
+
+    // Only after the commit: destroying the outgoing asset before the write is
+    // durable would leave a committed row pointing at an image that is gone if
+    // the transaction then rolled back.
+    if (photo.replaced_public_id) {
+      void destroyCloudinaryAsset(photo.replaced_public_id)
+    }
+
+    ok(
+      res,
+      { photo: { request_id: photo.request_id, image_url: photo.image_url, size_bytes: photo.size_bytes } },
+      201,
     )
-    ok(res, { photo }, 201)
   }),
 )
 
-/** Q-10 — raw image bytes; visible to the owning senior, assignee and police. */
-router.get(
-  '/:id/photo',
-  authenticate,
-  requireRole('senior', 'volunteer', 'police'),
-  requireActive,
-  asyncHandler(async (req, res) => {
-    const id = String(req.params.id)
-    const photo = await getRequestPhoto(pool, req.user as { id: string; role: string }, id)
-    res
-      .status(200)
-      .setHeader('Content-Type', photo.contentType)
-      .setHeader('Cache-Control', 'private, max-age=300')
-      .send(photo.data)
-  }),
-)
+/** Best-effort Cloudinary cleanup; never allowed to fail the request. */
+async function destroyCloudinaryAsset(publicId: string): Promise<void> {
+  try {
+    await cloudinary.uploader.destroy(publicId)
+  } catch (err) {
+    logger.warn({ publicId, err }, 'could not destroy replaced request image')
+  }
+}
 
 export default router

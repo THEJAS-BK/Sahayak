@@ -188,6 +188,37 @@ export const RequestDetails: React.FC = () => {
 
       <Card>
         <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--color-border)' }}>
+          <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>Photo</h2>
+        </div>
+        <div style={{ padding: '1.5rem' }}>
+          {request.image_url ? (
+            <a href={request.image_url} target="_blank" rel="noreferrer" title="Open full size">
+              <img
+                src={request.image_url}
+                alt={`Photo the senior attached to request ${request.id}`}
+                style={{
+                  width: '100%',
+                  maxWidth: '480px',
+                  borderRadius: '0.5rem',
+                  border: '1px solid var(--color-border)',
+                  display: 'block',
+                  cursor: 'zoom-in',
+                }}
+              />
+              <span style={{ display: 'inline-block', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                Attached by the senior · select to open full size
+              </span>
+            </a>
+          ) : (
+            <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
+              The senior did not attach a photo to this request.
+            </span>
+          )}
+        </div>
+      </Card>
+
+      <Card>
+        <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--color-border)' }}>
           <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>Volunteer</h2>
         </div>
         <div style={{ padding: '1.5rem', fontSize: '0.875rem' }}>

@@ -90,6 +90,46 @@ class RequestsService {
   Future<void> cancel(String requestId) =>
       ApiClient.instance.patch('/api/requests/$requestId/cancel');
 
+  /// Q-09 — attach (or replace) the photo on a request the senior owns.
+  ///
+  /// [filePath] is a local file, normally straight from `image_picker`. The
+  /// backend streams it to Cloudinary and stores only the URL, so nothing but
+  /// the URL comes back: [uploadPhoto] returns it, and it also rides along as
+  /// `image_url` on every later read of the request.
+  ///
+  /// Throws [ApiException] with `PHOTO_TOO_LARGE` over 5 MB or
+  /// `UNSUPPORTED_IMAGE_TYPE` for anything that is not a JPEG/PNG/WebP. The
+  /// image is optional, so callers should treat a failure here as a warning
+  /// rather than rolling back the request that was already created.
+  Future<String> uploadPhoto(String requestId, String filePath) async {
+    final mimeType = ApiClient.imageMimeTypeFor(filePath);
+    if (mimeType == null) {
+      throw const ApiException(
+        code: 'UNSUPPORTED_IMAGE_TYPE',
+        message: 'That photo is not a JPEG, PNG or WebP image',
+      );
+    }
+
+    final data = await ApiClient.instance.postMultipart(
+      '/api/requests/$requestId/photo',
+      field: 'photo',
+      filePath: filePath,
+      mimeType: mimeType,
+    );
+
+    final photo = data['photo'];
+    final url = photo is Map<String, dynamic>
+        ? photo['image_url']?.toString()
+        : null;
+    if (url == null || url.isEmpty) {
+      throw const ApiException(
+        code: 'MALFORMED_RESPONSE',
+        message: 'Upload succeeded but no image URL came back',
+      );
+    }
+    return url;
+  }
+
   /// L-02 — accepting a request requires the volunteer to be available.
   Future<void> setAvailability(bool available) => ApiClient.instance.patch(
         '/api/volunteers/me/availability',

@@ -163,6 +163,10 @@ class _SeniorRequestDetailScreenState extends State<SeniorRequestDetailScreen> {
                   ],
                   const SizedBox(height: 12),
                   _WhatWasAsked(request: request),
+                  if (request.hasImage) ...[
+                    const SizedBox(height: 12),
+                    _PhotoCard(request: request),
+                  ],
                   const SizedBox(height: 12),
                   _Timeline(request: request),
                   const SizedBox(height: 12),
@@ -387,6 +391,122 @@ class _WhatWasAsked extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// The photo the senior attached, tap to view full screen.
+///
+/// Served straight from Cloudinary, so it needs no backend call and no
+/// download step here — the same URL every client gets. It can fail to load
+/// (revoked upload, offline), which is why the tile reports it rather than
+/// showing a broken box.
+class _PhotoCard extends StatelessWidget {
+  const _PhotoCard({required this.request});
+
+  final HelpRequest request;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = request.imageUrl!;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Your photo',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => _FullScreenPhoto(url: url),
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: AspectRatio(
+                aspectRatio: 4 / 3,
+                child: Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, progress) => progress == null
+                      ? child
+                      : Container(
+                          color: AppColors.scaffold,
+                          alignment: Alignment.center,
+                          child: const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                  errorBuilder: (_, __, ___) => Container(
+                    color: AppColors.scaffold,
+                    alignment: Alignment.center,
+                    child: const Text(
+                      'This photo could not be loaded.',
+                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Tap to view full size',
+            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The photo on its own, for when the senior wants a closer look.
+class _FullScreenPhoto extends StatelessWidget {
+  const _FullScreenPhoto({required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text(
+          'Photo',
+          style: TextStyle(color: Colors.white, fontSize: 16),
+        ),
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          maxScale: 4,
+          child: Image.network(
+            url,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const Text(
+              'This photo could not be loaded.',
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+          ),
+        ),
       ),
     );
   }

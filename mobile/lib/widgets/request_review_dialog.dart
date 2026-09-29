@@ -1,5 +1,9 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
 
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../services/api_client.dart';
 import '../services/voice_payload.dart';
 import '../theme/app_colors.dart';
 import 'primary_button.dart';
@@ -50,6 +54,12 @@ class _RequestReviewDialogState extends State<RequestReviewDialog> {
   late String _priority;
   late final TextEditingController _descriptionCtrl;
 
+  /// Local path of the photo the senior picked, or null. Not uploaded from
+  /// here — see [_PhotoTile].
+  String? _imagePath;
+
+  final ImagePicker _picker = ImagePicker();
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +68,7 @@ class _RequestReviewDialogState extends State<RequestReviewDialog> {
         : 'other';
     _priority = widget.request.priority;
     _descriptionCtrl = TextEditingController(text: widget.request.description);
+    _imagePath = widget.request.imagePath;
   }
 
   @override
@@ -68,6 +79,36 @@ class _RequestReviewDialogState extends State<RequestReviewDialog> {
 
   bool get _canSend => _descriptionCtrl.text.trim().isNotEmpty;
 
+  Future<void> _pick(ImageSource source) async {
+    try {
+      final picked = await _picker.pickImage(
+        source: source,
+        // Cap the long edge here so an 8 MB phone camera original never becomes
+        // a failed upload; the server caps at 5 MB and Cloudinary downsizes to
+        // 1000px anyway.
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 85,
+      );
+      if (picked == null || !mounted) return;
+
+      final mime = ApiClient.imageMimeTypeFor(picked.path);
+      if (mime == null) {
+        _notify('That file is not a JPEG, PNG or WebP image.');
+        return;
+      }
+
+      setState(() => _imagePath = picked.path);
+    } catch (e) {
+      _notify('Could not open that photo. Check camera and photo permissions.');
+    }
+  }
+
+  void _notify(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   void _send() {
     if (!_canSend) return;
     Navigator.of(context).pop(
@@ -75,6 +116,8 @@ class _RequestReviewDialogState extends State<RequestReviewDialog> {
         category: _category,
         description: _descriptionCtrl.text.trim(),
         priority: _priority,
+        imagePath: _imagePath,
+        clearImage: _imagePath == null,
       ),
     );
   }
@@ -140,7 +183,11 @@ class _RequestReviewDialogState extends State<RequestReviewDialog> {
                       _DetailsList(details: details),
                     ],
                     const SizedBox(height: 18),
-                    const _CameraPlaceholder(),
+                    _PhotoTile(
+                      imagePath: _imagePath,
+                      onPick: _pick,
+                      onClear: () => setState(() => _imagePath = null),
+                    ),
                     const SizedBox(height: 8),
                   ],
                 ),
@@ -396,85 +443,185 @@ class _DetailsList extends StatelessWidget {
   }
 }
 
-/// Photo capture is not wired up yet — the tile is deliberately inert so the
-/// rest of the review flow can be built and tested without a camera dependency.
-class _CameraPlaceholder extends StatelessWidget {
-  const _CameraPlaceholder();
+/// Photo tile for the review sheet: opens the camera or the gallery, shows a
+/// thumbnail of what was picked, and lets it be replaced or removed.
+///
+/// The picked file stays on disk until the request is actually sent — nothing
+/// is uploaded from here, because the upload needs the request id that
+/// `POST /api/requests` has not returned yet. The path rides along on
+/// [VoiceHelpRequest.imagePath] and the conversation screen sends it afterwards.
+class _PhotoTile extends StatelessWidget {
+  const _PhotoTile({required this.imagePath, required this.onPick, required this.onClear});
 
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Photos are not available yet.'),
-          ),
-        );
-      },
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-        decoration: BoxDecoration(
-          color: AppColors.cardWhite,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
+  /// Local file path of the current selection, or null when there is none.
+  final String? imagePath;
+
+  final Future<void> Function(ImageSource source) onPick;
+  final VoidCallback onClear;
+
+  Future<void> _choose(BuildContext context) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppColors.cardWhite,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: AppColors.scaffold,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.photo_camera_outlined,
-                color: AppColors.textSecondary,
-                size: 20,
-              ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined, color: AppColors.textPrimary),
+              title: const Text('Take a photo'),
+              subtitle: const Text('Use the camera now'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
             ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Add a photo',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Show the volunteer what is wrong',
-                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: AppColors.scaffold,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.divider),
-              ),
-              child: const Text(
-                'Soon',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.4,
-                  color: AppColors.textSecondary,
-                ),
-              ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined, color: AppColors.textPrimary),
+              title: const Text('Choose from gallery'),
+              subtitle: const Text('Pick a photo you already took'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
             ),
           ],
         ),
       ),
+    );
+    if (source != null) await onPick(source);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final path = imagePath;
+
+    if (path != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _FieldLabel('Photo'),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: AspectRatio(
+              aspectRatio: 4 / 3,
+              child: Image.file(
+                File(path),
+                fit: BoxFit.cover,
+                // The file is local and known to exist, so a broken decode means
+                // the senior deleted or moved it — say so rather than showing
+                // an empty grey box.
+                errorBuilder: (_, __, ___) => Container(
+                  color: AppColors.scaffold,
+                  alignment: Alignment.center,
+                  child: const Text(
+                    'That photo could not be opened.',
+                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _choose(context),
+                  icon: const Icon(Icons.swap_horiz, size: 16),
+                  label: const Text('Change'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.accentBlue,
+                    side: const BorderSide(color: AppColors.divider),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onClear,
+                  icon: const Icon(Icons.close, size: 16),
+                  label: const Text('Remove'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.textSecondary,
+                    side: const BorderSide(color: AppColors.divider),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () => _choose(context),
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+            decoration: BoxDecoration(
+              color: AppColors.cardWhite,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: AppColors.scaffold,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.photo_camera_outlined,
+                    color: AppColors.textSecondary,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Add a photo',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Show the volunteer what is wrong',
+                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.scaffold,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.divider),
+                  ),
+                  child: const Text(
+                    'Optional',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

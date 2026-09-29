@@ -129,6 +129,9 @@ class HelpRequest {
   final String? assignedVolunteerId;
   final String? assignedVolunteerName;
 
+  /// Cloudinary URL of the photo the senior attached, or null if they did not.
+  final String? imageUrl;
+
   const HelpRequest({
     required this.id,
     required this.category,
@@ -148,7 +151,11 @@ class HelpRequest {
     this.seniorPhone,
     this.assignedVolunteerId,
     this.assignedVolunteerName,
+    this.imageUrl,
   });
+
+  /// True when a photo is attached and worth rendering.
+  bool get hasImage => imageUrl != null && imageUrl!.isNotEmpty;
 
   factory HelpRequest.fromJson(Map<String, dynamic> json) {
     return HelpRequest(
@@ -173,6 +180,9 @@ class HelpRequest {
       assignedVolunteerId: _assignedField(json, 'id') ??
           (json['assigned_volunteer_id'] ?? json['assignedVolunteerId'])?.toString(),
       assignedVolunteerName: _assignedField(json, 'full_name'),
+      // Q-02 runs its rows through `shapeRow`, which camelCases every column,
+      // so this is the one field that can arrive under either spelling.
+      imageUrl: (json['image_url'] ?? json['imageUrl'])?.toString(),
     );
   }
 
@@ -266,6 +276,7 @@ class HelpRequest {
         seniorPhone: seniorPhone,
         assignedVolunteerId: assignedVolunteerId,
         assignedVolunteerName: assignedVolunteerName,
+        imageUrl: imageUrl,
       );
 
   /// Great-circle distance in metres between two coordinates.
