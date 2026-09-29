@@ -13,6 +13,7 @@ import { Seniors } from './pages/Seniors';
 import { SeniorDetails } from './pages/SeniorDetails';
 import { AuditLogs } from './pages/AuditLogs';
 import { Map } from './pages/Map';
+import { Monitoring } from './pages/Monitoring';
 import { getSessionRole, getToken } from './api/client';
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -51,6 +52,7 @@ function App() {
           <Route path="verification" element={<Verification />} />
           <Route path="requests" element={<Requests />} />
           <Route path="requests/:requestId" element={<RequestDetails />} />
+          <Route path="monitoring" element={<Monitoring />} />
           <Route path="emergencies" element={<Emergencies />} />
           <Route path="volunteers" element={<Volunteers />} />
           <Route path="volunteers/:volunteerId" element={<VolunteerDetails />} />
