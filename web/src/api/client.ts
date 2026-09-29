@@ -4,10 +4,12 @@ import type {
   CurrentUser,
   EmergencyListResult,
   PoliceAssignmentResult,
+  PoliceOverview,
   PoliceRequest,
   RequestListResult,
   SeniorDetail,
   SeniorListResult,
+  VerificationDetail,
   VerificationListResult,
   VolunteerDetail,
 } from './types';
@@ -16,6 +18,7 @@ const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api';
 
 export const TOKEN_KEY = 'sahayak_token';
 export const REFRESH_TOKEN_KEY = 'sahayak_refresh_token';
+const USER_KEY = 'sahayak_user';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -39,7 +42,7 @@ export function getToken(): string | null {
  * every request regardless; this only decides what the UI shows.
  */
 export function getSessionRole(): string | null {
-  const stored = localStorage.getItem('sahayak_user');
+  const stored = localStorage.getItem(USER_KEY);
   if (stored) {
     try {
       const role = (JSON.parse(stored) as { role?: string | null }).role;
@@ -50,8 +53,24 @@ export function getSessionRole(): string | null {
   }
   const token = getToken();
   if (!token) return null;
+  return decodeJwtRole(token);
+}
+
+/**
+ * A JWT payload is base64**url**: `-` and `_` stand in for `+` and `/`, and the
+ * encoding is unpadded. `atob` only speaks standard base64, so handing it the
+ * raw segment throws `InvalidCharacterError` for any real token long enough to
+ * encode those characters — which is every one of them. Without this the
+ * fallback above never worked and an officer whose `sahayak_user` key was
+ * missing was locked out of the console as "not police".
+ */
+function decodeJwtRole(token: string): string | null {
+  const segment = token.split('.')[1];
+  if (!segment) return null;
   try {
-    const payload = JSON.parse(atob(token.split('.')[1])) as { role?: string };
+    const base64 = segment.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const payload = JSON.parse(atob(padded)) as { role?: string | null };
     return payload.role ?? null;
   } catch {
     return null;
@@ -67,18 +86,29 @@ export function setSession(payload: {
   const rt = payload.refresh_token;
   if (rt) localStorage.setItem(REFRESH_TOKEN_KEY, rt);
   else localStorage.removeItem(REFRESH_TOKEN_KEY);
-  if (payload.user) localStorage.setItem('sahayak_user', JSON.stringify(payload.user));
+  // A payload with no user (the "paste a token" sign-in) must clear the previous
+  // session's role, not inherit it. Leaving a stale `senior` in place sent the
+  // next officer to the "Police access only" wall despite a valid police token.
+  if (payload.user) localStorage.setItem(USER_KEY, JSON.stringify(payload.user));
+  else localStorage.removeItem(USER_KEY);
 }
 
 export function clearSession(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
-  localStorage.removeItem('sahayak_user');
+  localStorage.removeItem(USER_KEY);
 }
 
 interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
 }
+
+/**
+ * Matches the mobile client's 10 s budget. Without it a hung Neon connection
+ * leaves a console page on "Loading…" forever with no way for the officer to
+ * tell that apart from a slow query.
+ */
+const REQUEST_TIMEOUT_MS = 10_000;
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = getToken();
@@ -88,16 +118,24 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: options.method ?? 'GET',
-    headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  if (res.status === 401) {
-    clearSession();
-    if (window.location.pathname !== '/login') window.location.assign('/login');
-    throw new ApiError(401, 'UNAUTHENTICATED', 'Access token required');
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: options.method ?? 'GET',
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') {
+      throw new ApiError(0, 'TIMEOUT', 'The server took too long to respond. Try again.');
+    }
+    throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the server. Check your connection.');
+  } finally {
+    clearTimeout(timer);
   }
 
   const json = (await res.json().catch(() => null)) as
@@ -108,11 +146,18 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     throw new ApiError(res.status, 'INVALID_RESPONSE', `Unexpected response (${res.status})`);
   }
   if (!res.ok || !json.success) {
-    throw new ApiError(
-      res.status,
-      json.error?.code ?? 'REQUEST_FAILED',
-      json.error?.message ?? `Request failed (${res.status})`,
-    );
+    const code = json.error?.code ?? 'REQUEST_FAILED';
+    const message = json.error?.message ?? `Request failed (${res.status})`;
+    // Only a genuinely unusable access token ends the session. A 401 that is
+    // really about the credential the user is typing — a wrong OTP, sign-in
+    // attempts at /auth/otp/* — must surface its own message and leave an
+    // already-signed-in officer alone. Previously every 401 read as "Access
+    // token required", so a mistyped code logged you out and lied about why.
+    if (res.status === 401 && code === 'UNAUTHENTICATED') {
+      clearSession();
+      if (window.location.pathname !== '/login') window.location.assign('/login');
+    }
+    throw new ApiError(res.status, code, message);
   }
   return json.data;
 }
@@ -131,8 +176,26 @@ export function verifyOtp(email: string, code: string): Promise<OtpVerifyResult>
   return request('/auth/otp/verify', { method: 'POST', body: { email, code } });
 }
 
+/**
+ * A-04. Police accounts are issued an access token and no refresh token, so
+ * there is nothing server-side to revoke for them and this call is skipped
+ * rather than made with an empty body (which the endpoint rejects as a 400).
+ * Callers must still clear the local session either way.
+ */
+export function logout(): Promise<{ logged_out: boolean } | null> {
+  const refresh = localStorage.getItem(REFRESH_TOKEN_KEY);
+  if (!refresh) return Promise.resolve(null);
+  return request('/auth/logout', { method: 'POST', body: { refresh_token: refresh } });
+}
+
 export function fetchCurrentUser(): Promise<CurrentUser> {
   return request('/me');
+}
+
+/** P-08: the Dashboard tiles, counted in SQL rather than over a 200-row page. */
+export function fetchPoliceOverview(day?: { from: string; to: string }): Promise<PoliceOverview> {
+  const query = day ? `?${new URLSearchParams({ from: day.from, to: day.to }).toString()}` : '';
+  return request(`/police/overview${query}`);
 }
 
 export function fetchPoliceRequests(params?: Record<string, string>): Promise<RequestListResult> {
@@ -158,6 +221,8 @@ export interface AssignableVolunteerQuery {
   lat?: number;
   lng?: number;
   search?: string;
+  /** 'true' for on duty only, 'false' for off duty only, omitted for both. */
+  available?: 'true' | 'false';
 }
 
 export function fetchAssignableVolunteers(
@@ -169,6 +234,7 @@ export function fetchAssignableVolunteers(
     params.set('lng', String(query.lng));
   }
   if (query.search) params.set('search', query.search);
+  if (query.available) params.set('available', query.available);
   return request(`/police/volunteers?${params.toString()}`);
 }
 
@@ -190,11 +256,25 @@ export function fetchVerifications(params?: Record<string, string>): Promise<Ver
   return request(`/verifications${query}`);
 }
 
+/** V-02: the submitted form behind a queue row, so a decision has evidence. */
+export function fetchVerification(id: string): Promise<{ verification: VerificationDetail }> {
+  return request(`/verifications/${id}`);
+}
+
+/**
+ * V-03. `reason` is optional in the API but is what the applicant is told when
+ * a registration is turned down, so a rejection without one is a dead end for
+ * the person on the other side.
+ */
 export function reviewVerification(
   id: string,
   status: 'APPROVED' | 'REJECTED',
-): Promise<{ verification: unknown }> {
-  return request(`/verifications/${id}`, { method: 'PATCH', body: { status } });
+  reason?: string,
+): Promise<{ verification: { id: string; status: 'APPROVED' | 'REJECTED'; review_reason: string | null; reviewed_at: string | null } }> {
+  return request(`/verifications/${id}`, {
+    method: 'PATCH',
+    body: { status, ...(reason?.trim() ? { reason: reason.trim() } : {}) },
+  });
 }
 
 /**

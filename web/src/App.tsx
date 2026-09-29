@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { Layout } from './components/layout/Layout';
 import { Dashboard } from './pages/Dashboard';
@@ -12,9 +12,17 @@ import { VolunteerDetails } from './pages/VolunteerDetails';
 import { Seniors } from './pages/Seniors';
 import { SeniorDetails } from './pages/SeniorDetails';
 import { AuditLogs } from './pages/AuditLogs';
-import { Map } from './pages/Map';
+import { MapPage } from './pages/Map';
 import { Monitoring } from './pages/Monitoring';
-import { getSessionRole, getToken } from './api/client';
+import { clearSession, getSessionRole, getToken } from './api/client';
+
+const card: React.CSSProperties = {
+  padding: '2rem',
+  borderRadius: '0.5rem',
+  border: '1px solid var(--color-border)',
+  backgroundColor: 'var(--color-surface-white)',
+  maxWidth: '32rem',
+};
 
 function RequireAuth({ children }: { children: ReactNode }) {
   if (!getToken()) return <Navigate to="/login" replace />;
@@ -23,17 +31,58 @@ function RequireAuth({ children }: { children: ReactNode }) {
   // who logged in would land on a shell of empty pages and 403s.
   if (getSessionRole() !== 'police') {
     return (
-      <div style={{ padding: '2rem', maxWidth: '32rem' }}>
-        <h1 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>Police access only</h1>
-        <p style={{ color: 'var(--color-text-secondary)', margin: 0 }}>
-          This portal is for police officers. Sign in with a police account, or clear the
-          session and try again.
-        </p>
+      <div style={{ padding: '2rem' }}>
+        <div style={card}>
+          <h1 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>Police access only</h1>
+          <p style={{ color: 'var(--color-text-secondary)', margin: '0 0 1rem 0' }}>
+            This portal is for police officers. Sign in with a police account, or clear the session
+            and try again.
+          </p>
+          {/* Without this the officer is stuck: every route is behind the same
+              guard, so the only way out was clearing site data by hand. */}
+          <button
+            type="button"
+            onClick={() => {
+              clearSession();
+              window.location.assign('/login');
+            }}
+            style={{
+              padding: '0.5rem 0.875rem',
+              borderRadius: '0.375rem',
+              border: '1px solid var(--color-border)',
+              background: 'var(--color-primary-navy)',
+              color: 'var(--color-text-inverse)',
+              fontFamily: 'inherit',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Sign in as an officer
+          </button>
+        </div>
       </div>
     );
   }
   return <>{children}</>;
 }
+
+const NotFound: React.FC = () => (
+  <div style={{ padding: '2rem' }}>
+    <div style={card}>
+      <h1 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>Page not found</h1>
+      <p style={{ color: 'var(--color-text-secondary)', margin: '0 0 1rem 0' }}>
+        That address does not match any screen in the console.
+      </p>
+      <Link
+        to="/"
+        style={{ color: 'var(--color-primary-navy)', fontSize: '0.875rem', fontWeight: 600 }}
+      >
+        ← Back to the dashboard
+      </Link>
+    </div>
+  </div>
+);
 
 function App() {
   return (
@@ -59,8 +108,8 @@ function App() {
           <Route path="seniors" element={<Seniors />} />
           <Route path="seniors/:seniorId" element={<SeniorDetails />} />
           <Route path="audit-logs" element={<AuditLogs />} />
-          <Route path="map" element={<Map />} />
-          <Route path="*" element={<div style={{ padding: '2rem' }}>Page not found or under construction.</div>} />
+          <Route path="map" element={<MapPage />} />
+          <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
     </Router>
