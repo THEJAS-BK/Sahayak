@@ -147,9 +147,10 @@ Sign in at `/login` with the single police account created by `npm run db:seed`
 Other scripts:
 
 ```bash
-npm run build     # type-check + production build to dist/
-npm run preview   # preview the production build
-npm run lint      # lint source with oxlint
+npm run build       # type-check + production build to dist/
+npm run typecheck   # type-check only (tsc -b, the real check; plain tsc --noEmit is a no-op here)
+npm run preview     # preview the production build
+npm run lint        # lint source with oxlint
 ```
 
 

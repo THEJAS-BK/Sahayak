@@ -235,7 +235,7 @@ class _RequestCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                if (r.status != null) HelpRequestStatusBadge(status: r.status),
+                if (r.status != null) RequestStateBadge(status: r.status),
               ],
             ),
             const SizedBox(height: 10),
