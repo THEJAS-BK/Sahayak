@@ -108,7 +108,7 @@ interface DemoResult {
   senior_user_id: string
   volunteer_user_id: string
   request_ids: string[]
-  dispatched_to: string | null
+  dispatched_to: string[]
 }
 
 async function seedDemo(db: Queryable): Promise<DemoResult> {
@@ -174,7 +174,7 @@ async function seedDemo(db: Queryable): Promise<DemoResult> {
 
   // The live one. Dispatch goes through the real matcher rather than a
   // hand-written batch, so the seeded state is exactly what the app produces —
-  // and it exercises the single-target path while seeding.
+  // and it exercises the fan-out path while seeding.
   await db.query(`DELETE FROM help_requests WHERE description LIKE '[demo]%' AND status <> 'COMPLETED'`)
   const live = await db.query<{ id: string }>(
     `INSERT INTO help_requests
@@ -185,7 +185,7 @@ async function seedDemo(db: Queryable): Promise<DemoResult> {
     [seniorId, DEMO_SENIOR.latitude, DEMO_SENIOR.longitude],
   )
   const liveId = live.rows[0].id
-  const { candidate, dispatched } = await markDispatched(
+  const { candidates, dispatched } = await markDispatched(
     db,
     {
       id: liveId,
@@ -201,6 +201,8 @@ async function seedDemo(db: Queryable): Promise<DemoResult> {
       { requestId: liveId },
       'demo: the live request found no eligible volunteer. Check the demo coordinates and that the volunteer is on duty.',
     )
+  } else {
+    logger.info({ requestId: liveId, volunteers: candidates.length }, 'demo: live request dispatched')
   }
   requestIds.push(liveId)
 
@@ -208,7 +210,7 @@ async function seedDemo(db: Queryable): Promise<DemoResult> {
     senior_user_id: seniorId,
     volunteer_user_id: volunteerId,
     request_ids: requestIds,
-    dispatched_to: candidate ? candidate.id : null,
+    dispatched_to: candidates.map((c) => c.id),
   }
 }
 

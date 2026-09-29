@@ -108,11 +108,11 @@ class _FakeApiClient extends ApiClient {
         'is_active': true,
         'verification_status': 'APPROVED',
         'profile': {
-          'fullName': 'Karthik Shetty',
-          'phoneNumber': '+91 90000 11111',
-          'baseLatitude': 13.3522,
-          'baseLongitude': 74.7928,
-          'isAvailable': available,
+          'full_name': 'Karthik Shetty',
+          'phone_number': '+91 90000 11111',
+          'base_latitude': 13.3522,
+          'base_longitude': 74.7928,
+          'is_available': available,
         },
       };
     }

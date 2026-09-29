@@ -156,16 +156,11 @@ export async function listMyRequests(db: Queryable, user: { id: string; role: st
 
 async function loadRequest(db: Queryable, id: string) {
   const res = await db.query(
-<<<<<<< Updated upstream
-    `SELECT hr.*, s.full_name AS senior_full_name, s.phone_number AS senior_phone, s.home_latitude, s.home_longitude,
-            vp.full_name AS volunteer_full_name, vp.phone_number AS volunteer_phone, vp.organization, vp.skills,
-            EXISTS(SELECT 1 FROM request_photos rp WHERE rp.request_id = hr.id) AS has_photo
-=======
     `SELECT hr.*, u.email AS senior_email,
             s.full_name AS senior_full_name, s.phone_number AS senior_phone, s.home_latitude, s.home_longitude,
             vp.full_name AS volunteer_full_name, vp.phone_number AS volunteer_phone,
-            vp.organization AS volunteer_organization, vp.skills AS volunteer_skills
->>>>>>> Stashed changes
+            vp.organization AS volunteer_organization, vp.skills AS volunteer_skills,
+            EXISTS(SELECT 1 FROM request_photos rp WHERE rp.request_id = hr.id) AS has_photo
      FROM help_requests hr
      JOIN users u ON u.id = hr.senior_id
      LEFT JOIN senior_profiles s ON s.user_id = hr.senior_id
@@ -197,11 +192,8 @@ interface RequestRow {
   dispatched_at: Date | null
   dispatch_attempt: number
   dispatch_batch: unknown
-<<<<<<< Updated upstream
   has_photo: boolean
-=======
   senior_email: string
->>>>>>> Stashed changes
   senior_full_name: string | null
   senior_phone: string | null
   volunteer_full_name: string | null

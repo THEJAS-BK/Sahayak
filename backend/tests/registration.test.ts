@@ -4,11 +4,11 @@ import { createApp } from '../src/app.js'
 import { pool } from '../src/database/pool.js'
 import { resetDb } from './helpers/db.js'
 import { clearSentEmails, createUser, lastOtpCode } from './fixtures.js'
-import { signAccessToken } from '../src/modules/auth/tokens.service.js'
+import { signAccessToken, type AccountRole } from '../src/modules/auth/tokens.service.js'
 
 const app = () => request(createApp())
 
-function authHeader(user: { id: string; role: string | null; is_active: boolean }): string {
+function authHeader(user: { id: string; role: AccountRole; is_active: boolean }): string {
   return `Bearer ${signAccessToken({ id: user.id, role: user.role, isActive: user.is_active })}`
 }
 

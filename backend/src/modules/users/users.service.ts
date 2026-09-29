@@ -23,12 +23,18 @@ export async function getVerificationStatus(db: Queryable, userId: string): Prom
   return status === 'APPROVED' || status === 'PENDING' || status === 'REJECTED' ? status : 'NONE'
 }
 
-const camel = (key: string) => key.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase())
-
+/**
+ * Profile columns are passed through untouched, so the row keeps its native
+ * snake_case and `GET /api/me` speaks the same convention as every other
+ * endpoint in the API.
+ *
+ * This used to blanket-camelCase the whole `SELECT *`, which produced one
+ * response holding `is_active`/`verification_status` next to
+ * `profile.fullName`/`profile.isAvailable`. A client reading `profile.full_name`
+ * then got `null` and rendered a blank profile with nothing signalling a fault.
+ */
 function shape(row: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(row)) out[camel(k)] = v
-  return out
+  return { ...row }
 }
 
 export async function getCurrentUser(db: Queryable, userId: string): Promise<CurrentUser> {

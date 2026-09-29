@@ -2,9 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sahayak_mobile/services/profile_service.dart';
 import 'package:sahayak_mobile/services/registration_service.dart';
 
-/// A `/api/me` body with the shape the backend actually sends: a snake_case
-/// envelope around a camelCased profile object (users.routes.ts against
-/// users.service.ts `shape`, which camelCases every profile column).
+/// A `/api/me` body with the shape the backend actually sends: snake_case
+/// throughout, envelope and profile alike (users.routes.ts hands `me.profile`
+/// straight through from users.service.ts `shape`, which now passes the profile
+/// row through under its native column names).
 Map<String, dynamic> meResponse({Map<String, dynamic>? profile}) => {
       'id': 'u1',
       'email': 'anita@example.com',
@@ -14,18 +15,18 @@ Map<String, dynamic> meResponse({Map<String, dynamic>? profile}) => {
       'profile': profile ??
           {
             'id': 'p1',
-            'userId': 'u1',
-            'fullName': 'Anita Desai',
-            'phoneNumber': '+91 98111 22334',
-            'homeLatitude': 12.971599,
-            'homeLongitude': 77.209566,
-            'preferredLanguage': 'kannada',
+            'user_id': 'u1',
+            'full_name': 'Anita Desai',
+            'phone_number': '+91 98111 22334',
+            'home_latitude': 12.971599,
+            'home_longitude': 77.209566,
+            'preferred_language': 'kannada',
           },
     };
 
 void main() {
   group('MyProfile.fromJson', () {
-    test('reads the camelCased profile the backend sends', () {
+    test('reads the snake_case profile the backend sends', () {
       final p = MyProfile.fromJson(meResponse());
 
       expect(p.fullName, 'Anita Desai');
@@ -45,13 +46,13 @@ void main() {
 
     test('a volunteer profile is available and knows its own skills', () {
       final p = MyProfile.fromJson(meResponse(profile: {
-        'fullName': 'Ravi Kumar',
-        'phoneNumber': '9876543210',
+        'full_name': 'Ravi Kumar',
+        'phone_number': '9876543210',
         'organization': 'Mahila Samiti',
         'skills': ['medical', 'transport'],
-        'baseLatitude': 12.97,
-        'baseLongitude': 77.21,
-        'isAvailable': true,
+        'base_latitude': 12.97,
+        'base_longitude': 77.21,
+        'is_available': true,
       }));
 
       expect(p.organization, 'Mahila Samiti');

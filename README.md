@@ -171,9 +171,8 @@ npm run lint        # lint source with oxlint
 | `/volunteers` | Volunteers | `GET /api/police/volunteers` |
 | `/volunteers/:volunteerId` | Volunteer detail | `GET /api/police/volunteers/:id` |
 | `/audit-logs` | Audit logs | `GET /api/audit-logs` |
-
-Not built: **Monitoring** (no defined purpose) and **Map** (needs a mapping
-library; no new endpoint required). See `plans/web-portal-gaps.md`.
+| `/monitoring` | Live operations monitor | `GET /api/police/requests` (polled) |
+| `/map` | Operations map | `GET /api/police/requests`, `GET /api/police/emergency-events` |
 
 ## Mobile (Flutter — seniors & volunteers)
 
