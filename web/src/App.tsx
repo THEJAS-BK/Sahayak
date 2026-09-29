@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Layout } from './components/layout/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { Verification } from './pages/Verification';
+import { VerificationDetails } from './pages/VerificationDetails';
 import { Requests } from './pages/Requests';
 import { RequestDetails } from './pages/RequestDetails';
 import { Login } from './pages/Login';
@@ -99,10 +100,10 @@ function App() {
         >
           <Route index element={<Dashboard />} />
           <Route path="verification" element={<Verification />} />
-	<Route
-  path="verification/:verificationId"
-  element={<VerificationDetails />}
-/>
+          <Route
+            path="verification/:verificationId"
+            element={<VerificationDetails />}
+          />
           <Route path="requests" element={<Requests />} />
           <Route path="requests/:requestId" element={<RequestDetails />} />
           <Route path="monitoring" element={<Monitoring />} />
