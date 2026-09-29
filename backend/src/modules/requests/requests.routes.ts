@@ -13,9 +13,13 @@ import {
   createRequest,
   declineRequest,
   getRequest,
+  getRequestPhoto,
   getVolunteerContact,
   listMyRequests,
+  MAX_PHOTO_BYTES,
   nearbyRequests,
+  PHOTO_CONTENT_TYPES,
+  setRequestPhoto,
   updateRequestStatus,
 } from './requests.service.js'
 
@@ -246,6 +250,59 @@ router.get(
     const id = String(req.params.id)
     const contact = await getVolunteerContact(pool, req.user as { id: string }, id)
     ok(res, { volunteer: contact })
+  }),
+)
+
+const photoSchema = z.object({
+  content_type: z.enum(PHOTO_CONTENT_TYPES),
+  // ~4 MB decoded ≈ 5.6 M base64 chars; a little headroom, hard cap below.
+  data_base64: z.string().min(1).max(6_000_000),
+})
+
+/** Q-09 — attach/replace the photo on the caller's own open request. */
+router.post(
+  '/:id/photo',
+  authenticate,
+  requireRole('senior'),
+  requireActive,
+  asyncHandler(async (req, res) => {
+    const parsed = photoSchema.safeParse(req.body)
+    if (!parsed.success) throw errors.badRequest('Invalid photo payload')
+
+    const data = Buffer.from(parsed.data.data_base64, 'base64')
+    if (data.length === 0) throw errors.badRequest('Photo data could not be decoded')
+    if (data.length > MAX_PHOTO_BYTES) {
+      throw errors.badRequest(
+        `Photo must be ${Math.floor(MAX_PHOTO_BYTES / (1024 * 1024))} MB or smaller`,
+        'PHOTO_TOO_LARGE',
+      )
+    }
+
+    const id = String(req.params.id)
+    const photo = await withTransaction((db) =>
+      setRequestPhoto(db, req.user as { id: string }, id, {
+        contentType: parsed.data.content_type,
+        data,
+      }),
+    )
+    ok(res, { photo }, 201)
+  }),
+)
+
+/** Q-10 — raw image bytes; visible to the owning senior, assignee and police. */
+router.get(
+  '/:id/photo',
+  authenticate,
+  requireRole('senior', 'volunteer', 'police'),
+  requireActive,
+  asyncHandler(async (req, res) => {
+    const id = String(req.params.id)
+    const photo = await getRequestPhoto(pool, req.user as { id: string; role: string }, id)
+    res
+      .status(200)
+      .setHeader('Content-Type', photo.contentType)
+      .setHeader('Cache-Control', 'private, max-age=300')
+      .send(photo.data)
   }),
 )
 
