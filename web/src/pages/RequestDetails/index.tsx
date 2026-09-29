@@ -49,28 +49,12 @@ const formatDate = (iso: string) => new Date(iso).toLocaleString(undefined, {
   timeStyle: 'short',
 });
 
-interface TimelineEntry {
-  status: RequestStatus;
-  at: string;
-  note: string;
-}
 
 /** A request police may still hand to a named volunteer (BR-04, ASSIGNABLE_STATUSES). */
 const ASSIGNABLE: RequestStatus[] = ['PENDING', 'MATCHING', 'DISPATCHED'];
 
 const canAssign = (request: PoliceRequest): boolean =>
   ASSIGNABLE.includes(request.status) && request.assigned_volunteer === null;
-
-function buildTimeline(request: PoliceRequest): TimelineEntry[] {
-  const entries: TimelineEntry[] = [];
-  if (request.created_at) entries.push({ status: 'PENDING', at: request.created_at, note: 'Request created' });
-  if (request.dispatched_at) entries.push({ status: 'DISPATCHED', at: request.dispatched_at, note: 'Dispatched to volunteers' });
-  if (request.accepted_at) entries.push({ status: 'ACCEPTED', at: request.accepted_at, note: 'Accepted by volunteer' });
-  if (request.status === 'IN_PROGRESS') entries.push({ status: 'IN_PROGRESS', at: request.updated_at, note: 'In progress' });
-  if (request.completed_at) entries.push({ status: 'COMPLETED', at: request.completed_at, note: 'Request completed' });
-  if (request.cancelled_at) entries.push({ status: 'CANCELLED', at: request.cancelled_at, note: 'Request cancelled' });
-  return entries;
-}
 
 export const RequestDetails: React.FC = () => {
   const { requestId } = useParams<{ requestId: string }>();
@@ -110,8 +94,6 @@ export const RequestDetails: React.FC = () => {
       </div>
     );
   }
-
-  const timeline = buildTimeline(request);
   const extras = detailEntries(request.details);
   const senior = request.senior;
   const volunteer = request.assigned_volunteer;
@@ -210,33 +192,6 @@ export const RequestDetails: React.FC = () => {
           )}
         </div>
       </Card>
-
-      {timeline.length > 0 && (
-        <Card>
-          <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--color-border)' }}>
-            <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>Request Timeline</h2>
-          </div>
-          <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {timeline.map((entry, i) => (
-              <div key={i} style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                <div style={{
-                  marginTop: '0.25rem',
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  backgroundColor: i === timeline.length - 1 ? 'var(--color-primary-navy)' : 'var(--color-border)',
-                  flexShrink: 0,
-                }} />
-                <div>
-                  <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>{entry.status}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>{formatDate(entry.at)} · {entry.note}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
       {assignOpen && request && (
         <AssignVolunteerDialog
           request={request}
