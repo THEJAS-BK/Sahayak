@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import uuid
+from collections.abc import Sequence
 from typing import Literal
 
 from dotenv import load_dotenv
@@ -13,13 +14,24 @@ from livekit.agents import (
     JobContext,
     RunContext,
     function_tool,
+    llm,
     room_io,
+    stt,
+    tts,
 )
+from livekit.agents import inference
 from livekit.agents.inference import TurnDetector
-from livekit.agents.log import logger
 from livekit.plugins import noise_cancellation, silero
 
 load_dotenv()
+
+# A stdlib logger under this module's own name, not livekit.agents.log's: the
+# warnings this agent emits (a language switch that could not be applied, a
+# request that could not be published) are the only clue that a call went wrong,
+# and they should land on whatever handler the worker configures rather than
+# being shadowed by the SDK's logger.
+logger = logging.getLogger(__name__)
+
 
 # Topic the app listens on for structured help requests
 TOPIC_HELP_REQUEST = "sahayak_request"
@@ -94,16 +106,108 @@ def greeting_for(language: str) -> str:
     return "Welcome to Sahayak. How can I help you today?"
 
 
+def stt_for(language: str) -> stt.STT:
+    """STT configured for a conversation language.
+
+    Deepgram Nova-3 is the only LiveKit Inference STT that understands Kannada,
+    and its ``multi`` corpus does *not* include it, so the model is pinned to
+    the selected language explicitly: ``deepgram/nova-3:kn`` when Kannada is
+    active, plain ``deepgram/nova-3`` (English) otherwise.
+
+    Unlike the TTS, the STT's language must be decided before the session opens:
+    the recognition stream is long-lived (created once, reused across turns), so
+    calling this mid-session alone would not pick up the new language — the swap
+    also has to route through the pipelined STT, not just the instance's options.
+    """
+    if language == "kn":
+        return inference.STT.from_model_string("deepgram/nova-3:kn")
+    return inference.STT.from_model_string("deepgram/nova-3")
+
+
+async def _resolve_initial_language(room) -> str:
+    """The app's selected conversation language, read before session start.
+
+    The app publishes its choice as the ``lang`` participant attribute, which is
+    room state and travels with the participant info — unlike a data packet,
+    which is dropped if it is published before the agent joins. That info lands
+    shortly after the agent joins, so poll briefly; default to English if it
+    never shows up.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + LANGUAGE_GRACE_SECONDS
+    while True:
+        for participant in room.remote_participants.values():
+            language = participant.attributes.get("lang")
+            if language in LANGUAGES:
+                return language
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            return "en"
+        await asyncio.sleep(min(remaining, 0.1))
+
+
+def set_tts_language(instances: Sequence[tts.TTS], language: str) -> None:
+    """Point every TTS backend at the conversation language.
+
+    Reaches past `tts.FallbackAdapter`, which exposes no `update_options` of its
+    own, so the backends have to be handed over as the concrete instances they
+    are. Two livekit-agents details make this more than an assignment:
+
+    - `language` only travels in the websocket's `session.create` message, and
+      that socket is pooled and reused. The new language is silently dropped
+      unless the pooled connection is dropped with it, so a language switch
+      that skips this keeps speaking the previous language until the socket is
+      recycled on its own (or fails).
+    - `_pool` is private. If a future release renames it the switch degrades to
+      a logged warning rather than a crash, but the voice will not follow.
+
+    Best-effort by design: never raises, because the model instructions matter
+    more than the voice and must not be blocked by a TTS that cannot switch.
+    """
+    for instance in instances:
+        update_options = getattr(instance, "update_options", None)
+        if update_options is None:
+            logger.warning("TTS %s cannot change language at runtime", instance)
+            continue
+        try:
+            update_options(language=language)
+        except Exception as e:
+            logger.warning("failed to set TTS %s language: %s", instance, e)
+            continue
+        pool = getattr(instance, "_pool", None)
+        invalidate = getattr(pool, "invalidate", None)
+        if invalidate is None:
+            logger.warning(
+                "TTS %s keeps a pooled connection whose language is now stale; "
+                "the voice may not follow the language switch",
+                instance,
+            )
+            continue
+        invalidate()
+
+
 # Define your agent's behavior by extending the Agent class
 class Assistant(Agent):
-    def __init__(self, session: AgentSession) -> None:
+    def __init__(
+        self,
+        session: AgentSession,
+        tts_instances: Sequence[tts.TTS],
+        initial_language: str = "en",
+    ) -> None:
         super().__init__(instructions=instructions_for("en"))
         # The session is injected rather than read from self.session, because a
         # language packet can arrive before session.start() has run.
         self._session = session
-        self.language: str = "en"
+        # The FallbackAdapter's backends, kept as references of our own: the
+        # adapter cannot be asked to change language itself.
+        self._tts_instances = tts_instances
+        self.language: str = initial_language
         self._language_event = asyncio.Event()
         self._language_lock = asyncio.Lock()
+        # The STT the session opened with (built from the entry attributes).
+        # Tracks the language its stream is actually listening in, so a switch
+        # to the same language does not needlessly recreate the stream.
+        self._stt_language = initial_language
 
     def set_language(self, language: str) -> None:
         """Record the conversation language the app selected."""
@@ -114,16 +218,27 @@ class Assistant(Agent):
         """Reconfigure speech for the selected language, at any point in the
         session (also safe before the session fully starts).
 
+        Switches the STT too, not just the TTS: the recognition stream is
+        long-lived, so the STT instance's language alone would not take effect;
+        routing the swap through the live pipeline recreates the stream with
+        the new language.
+
         Serialized so rapid toggles cannot interleave and leave the TTS on one
         language while the instructions describe another."""
         if language not in LANGUAGES:
             return
         async with self._language_lock:
             self.set_language(language)
-            tts = self._session.tts
-            if tts is not None:
-                # Cartesia Sonic 3 covers 'kn'; takes effect on the next reply.
-                tts.update_options(language=language)
+            # Cartesia Sonic 3 covers 'kn'; takes effect on the next reply. Kept
+            # ahead of the instructions and unable to raise, so a TTS that will
+            # not switch still leaves the model speaking the right language.
+            set_tts_language(self._tts_instances, language)
+            if language != self._stt_language:
+                # Deepgram Nova-3 pinned to the selected language, swapped into
+                # the running pipeline so the next utterance is heard in that
+                # language.
+                self.update_options(stt=stt_for(language))
+                self._stt_language = language
             await self.update_instructions(instructions_for(language))
 
     def _attribute_language(self) -> str | None:
@@ -267,18 +382,46 @@ server = AgentServer()
 # The entrypoint function runs when a participant joins the room
 @server.rtc_session()
 async def entrypoint(ctx: JobContext):
+    # Decide the *listening* language before the pipeline starts: the STT stream
+    # is long-lived, so it must be built with the language baked in rather than
+    # switched after the fact. The worker joins the room asynchronously on
+    # session.start, but the app sets its preference as a participant attribute
+    # before this agent is dispatched, so connect first, then read it off the
+    # room with a short grace period (data packets published before the agent
+    # joins are dropped, so they cannot be used here).
+    await ctx.connect()
+    language = await _resolve_initial_language(ctx.room)
+    logger.info("conversation language at entry: %s", language)
+
     # Configure the voice pipeline with STT, LLM, TTS, and VAD providers.
-    # Google Gemini live transcribe auto-detects English and Kannada (and
-    # code-switching between them), so the same STT serves both toggle states.
+    # Deepgram Nova-3 is pinned to the conversation language ('kn' when Kannada
+    # is selected, English otherwise): it is the only Inference STT that hears
+    # Kannada, and its multi corpus does not include it.
+    #
+    # The TTS backends are built here rather than inline so the agent can keep a
+    # reference to each one: switching conversation language means reconfiguring
+    # them, and the FallbackAdapter offers no way to reach through to them.
+    tts_instances = [
+        # Cartesia Sonic 3 covers 'kn'; inworld is the fallback.
+        inference.TTS.from_model_string(
+            "cartesia/sonic-3:9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"
+        ),
+        inference.TTS.from_model_string("inworld/inworld-tts-1"),
+    ]
+
     session = AgentSession(
-        stt="google/gemini-3.5-transcribe-live",  # Speech-to-text (auto-detect en/kn)
-        llm="openai/gpt-4.1-mini",                # Language model for responses
-        tts="cartesia/sonic-3:9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",  # Text-to-speech voice
-        vad=silero.VAD.load(),                    # Voice activity detection
-        turn_detection=TurnDetector(),              # Turn detection
+        stt=stt_for(language),  # Speech-to-text in the conversation language
+        llm=llm.FallbackAdapter(  # Language model for responses
+            [
+                inference.LLM(model="openai/gpt-4.1-mini"),
+            ]
+        ),
+        tts=tts.FallbackAdapter(tts_instances),  # Text-to-speech voice
+        vad=silero.VAD.load(),  # Voice activity detection
+        turn_detection=TurnDetector(),  # Turn detection
     )
 
-    agent = Assistant(session)
+    agent = Assistant(session, tts_instances, initial_language=language)
 
     # Strong references to in-flight language switches, so a task is not
     # garbage collected midway through updating the instructions.

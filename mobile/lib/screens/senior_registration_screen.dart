@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../config/app_config.dart';
 import '../services/api_client.dart';
 import '../services/registration_service.dart';
 import '../theme/app_colors.dart';
@@ -17,8 +18,10 @@ class _SeniorRegistrationScreenState extends State<SeniorRegistrationScreen> {
   final _nameController     = TextEditingController();
   final _phoneController    = TextEditingController();
   final _aadhaarController  = TextEditingController();
-  final _latController      = TextEditingController();
-  final _lngController      = TextEditingController();
+  final _latController      = TextEditingController(
+      text: '${AppConfig.defaultLatitude}');
+  final _lngController      = TextEditingController(
+      text: '${AppConfig.defaultLongitude}');
 
   String _language = 'kannada';
   bool _submitting = false;
@@ -30,33 +33,37 @@ class _SeniorRegistrationScreenState extends State<SeniorRegistrationScreen> {
   };
 
   Future<void> _submit() async {
+    if (_submitting) return;
+
     final name = _nameController.text.trim();
     final phone = _phoneController.text.trim();
     final aadhaar = _aadhaarController.text.replaceAll(RegExp(r'\s'), '');
     final lat = double.tryParse(_latController.text.trim());
     final lng = double.tryParse(_lngController.text.trim());
 
-    if (name.isEmpty || phone.isEmpty || aadhaar.length != 12) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Fill in name, phone and the 12-digit Aadhaar number')),
-      );
-      return;
-    }
-    if (lat == null || lng == null || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid home latitude and longitude')),
-      );
+    final problem = RegistrationValidation.problem(
+      fullName: name,
+      phoneNumber: phone,
+      aadhaar: aadhaar,
+      latitude: lat,
+      longitude: lng,
+      latitudeLabel: 'home',
+    );
+    if (problem != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(problem)));
       return;
     }
 
     setState(() => _submitting = true);
     try {
+      // Safe: `problem` above already returned for a null or out-of-range
+      // coordinate, so the parse succeeded and the range check passed.
       await RegistrationService.instance.submitSenior(
         fullName: name,
         phoneNumber: phone,
         aadhaarNumber: aadhaar,
-        latitude: lat,
-        longitude: lng,
+        latitude: lat!,
+        longitude: lng!,
         language: _language,
       );
       if (!mounted) return;

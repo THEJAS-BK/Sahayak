@@ -79,7 +79,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.scaffold,
-      appBar: const SahayakAppBar(subtitle: 'My Requests'),
+      appBar: const SahayakAppBar(
+        subtitle: 'My Requests',
+        showBack: true,
+      ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())

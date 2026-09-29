@@ -10,6 +10,66 @@ const helpCategories = <String, String>{
   'other': 'Other help',
 };
 
+/// Client-side mirrors of the backend's registration schemas
+/// (`registrations.routes.ts`), so a value the server will reject is caught
+/// before the round trip instead of coming back as a generic 400 that does not
+/// say which field was wrong.
+class RegistrationValidation {
+  const RegistrationValidation._();
+
+  /// `phoneSchema`: 5-20 chars, digits/spaces/+/- only.
+  static final RegExp _phone = RegExp(r'^[0-9+\s-]+$');
+
+  /// `aadhaarSchema`: exactly 12 digits. A length check alone would let
+  /// `1234-5678-12` or twelve letters through to a server-side rejection.
+  static final RegExp _aadhaar = RegExp(r'^\d{12}$');
+
+  static const int nameMaxLength = 200;
+  static const int phoneMinLength = 5;
+  static const int phoneMaxLength = 20;
+
+  static bool isValidName(String value) =>
+      value.trim().isNotEmpty && value.length <= nameMaxLength;
+
+  static bool isValidPhone(String value) =>
+      value.length >= phoneMinLength &&
+      value.length <= phoneMaxLength &&
+      _phone.hasMatch(value);
+
+  static bool isValidAadhaar(String value) => _aadhaar.hasMatch(value);
+
+  /// The first problem with a registration form, phrased for the user, or null
+  /// when the form is acceptable. [aadhaar] is expected pre-stripped of spaces.
+  static String? problem({
+    required String fullName,
+    required String phoneNumber,
+    required String aadhaar,
+    required double? latitude,
+    required double? longitude,
+    required String latitudeLabel,
+  }) {
+    if (!isValidName(fullName)) {
+      return fullName.trim().isEmpty
+          ? 'Enter your full name'
+          : 'That name is too long (max $nameMaxLength characters)';
+    }
+    if (!isValidPhone(phoneNumber)) {
+      return 'Enter a valid phone number ($phoneMinLength-$phoneMaxLength digits, '
+          'spaces, + and - only)';
+    }
+    if (!isValidAadhaar(aadhaar)) {
+      return 'Enter your 12-digit Aadhaar number';
+    }
+    if (latitude == null || longitude == null) {
+      return 'Enter $latitudeLabel latitude and longitude';
+    }
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      return 'Enter a valid $latitudeLabel latitude and longitude';
+    }
+    return null;
+  }
+}
+
 /// Registration endpoints (all require an authenticated account with no role
 /// yet — the backend rejects a second registration).
 ///   R-01 POST /api/registrations/senior

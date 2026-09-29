@@ -156,10 +156,18 @@ export async function listMyRequests(db: Queryable, user: { id: string; role: st
 
 async function loadRequest(db: Queryable, id: string) {
   const res = await db.query(
+<<<<<<< Updated upstream
     `SELECT hr.*, s.full_name AS senior_full_name, s.phone_number AS senior_phone, s.home_latitude, s.home_longitude,
             vp.full_name AS volunteer_full_name, vp.phone_number AS volunteer_phone, vp.organization, vp.skills,
             EXISTS(SELECT 1 FROM request_photos rp WHERE rp.request_id = hr.id) AS has_photo
+=======
+    `SELECT hr.*, u.email AS senior_email,
+            s.full_name AS senior_full_name, s.phone_number AS senior_phone, s.home_latitude, s.home_longitude,
+            vp.full_name AS volunteer_full_name, vp.phone_number AS volunteer_phone,
+            vp.organization AS volunteer_organization, vp.skills AS volunteer_skills
+>>>>>>> Stashed changes
      FROM help_requests hr
+     JOIN users u ON u.id = hr.senior_id
      LEFT JOIN senior_profiles s ON s.user_id = hr.senior_id
      LEFT JOIN volunteer_profiles vp ON vp.user_id = hr.assigned_volunteer_id
      WHERE hr.id = $1`,
@@ -189,7 +197,11 @@ interface RequestRow {
   dispatched_at: Date | null
   dispatch_attempt: number
   dispatch_batch: unknown
+<<<<<<< Updated upstream
   has_photo: boolean
+=======
+  senior_email: string
+>>>>>>> Stashed changes
   senior_full_name: string | null
   senior_phone: string | null
   volunteer_full_name: string | null
@@ -240,11 +252,26 @@ function projectRequest(row: RequestRow, role: string): Record<string, unknown> 
     }
   }
 
+  // Police see the full record, matching the shape of GET /police/requests so
+  // the console can render a detail page from the same types as a list row.
+  // The senior email and the volunteer's organization are deliberately absent
+  // from the two branches above.
   return {
     ...base,
-    senior: { id: row.senior_id, full_name: row.senior_full_name, phone_number: row.senior_phone },
+    dispatch_batch: row.dispatch_batch ?? null,
+    senior: {
+      id: row.senior_id,
+      email: row.senior_email,
+      full_name: row.senior_full_name,
+      phone_number: row.senior_phone,
+    },
     assigned_volunteer: row.assigned_volunteer_id
-      ? { id: row.assigned_volunteer_id, full_name: row.volunteer_full_name, phone_number: row.volunteer_phone }
+      ? {
+          id: row.assigned_volunteer_id,
+          full_name: row.volunteer_full_name,
+          phone_number: row.volunteer_phone,
+          organization: row.volunteer_organization,
+        }
       : null,
   }
 }

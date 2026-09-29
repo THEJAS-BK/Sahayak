@@ -258,15 +258,17 @@ With both halves in place the agent joins the room on the first connection.
 
 ### Provider keys
 
-`agent.py` names models as strings (`google/gemini-3.5-transcribe-live`,
-`openai/gpt-4.1-mini`, `cartesia/sonic-3`). The SDK resolves these to
-`livekit.agents.inference.*` and routes them through the LiveKit inference
-gateway using the existing `LIVEKIT_API_KEY`. There are no AssemblyAI, OpenAI or
-Cartesia plugin packages to install and no separate API keys to configure.
+`agent.py` names models as strings (`deepgram/nova-3`, `openai/gpt-4.1-mini`,
+`cartesia/sonic-3`). The SDK resolves these to `livekit.agents.inference.*` and
+routes them through the LiveKit inference gateway using the existing
+`LIVEKIT_API_KEY`. There are no AssemblyAI, OpenAI or Cartesia plugin packages to
+install and no separate API keys to configure.
 
-Gemini live-transcribe auto-detects English and Kannada (including
-code-switching), so the same STT serves both toggle states. Cartesia Sonic 3
-covers `kn` for speech output.
+Deepgram Nova-3 is pinned to the conversation language (`deepgram/nova-3:kn`
+when Kannada is selected, plain English otherwise). It is the only Inference STT
+that understands Kannada, and its `multi` corpus does *not* include it — so the
+language is always set explicitly, never auto-detected. Cartesia Sonic 3 covers
+`kn` for speech output.
 
 ### Conversation language (attribute `lang` + topic `agent_lang`)
 
@@ -284,12 +286,16 @@ choice two ways, because of when the agent shows up in the room:
   (`{ v: 1, lang: "en" | "kn" }`). This is what makes a mid-call toggle take
   effect, since the agent is already in the room by then.
 
-The agent's participant info can land slightly after `on_enter` begins, so the
-greeting waits (up to `LANGUAGE_GRACE_SECONDS`) for whichever of the two arrives
-first and then falls back to English. On either path the agent switches the TTS
-language (`session.tts.update_options(language=...)`, which the inference TTS
-snapshots per utterance) and the LLM instructions
-(`agent.update_instructions(...)`), then greets in the chosen language. STT
-stays on Gemini auto-detect so the senior can speak either language regardless
-of the toggle.
+The STT must be built with its language before the session starts — the
+recognition stream is long-lived and recreated only on a pipeline swap — so the
+entrypoint reads the `lang` attribute off the room first (polling up to
+`LANGUAGE_GRACE_SECONDS`) and passes `deepgram/nova-3:kn` (or English) into the
+`AgentSession`. Mid-call toggles swap it through
+`agent.update_options(stt=...)`, which recreates the stream in the new language.
+
+The greeting waits (up to `LANGUAGE_GRACE_SECONDS`) for whichever of the two
+arrives first and then falls back to English. On either path the agent switches
+the TTS language (`set_tts_language(...)`, which the inference TTS snapshots per
+utterance), the STT language (as above), and the LLM instructions
+(`agent.update_instructions(...)`), then greets in the chosen language.
 

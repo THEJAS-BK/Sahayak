@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import '../services/user_session.dart';
+import '../services/profile_service.dart';
+import '../services/session_service.dart';
 import '../theme/app_colors.dart';
 
-/// Minimal senior profile view. Name / phone / address are placeholders until
-/// the backend profile API is available; role matches [UserSession].
+/// Senior profile view, read from `GET /api/me` (the registration the user
+/// actually submitted). The role comes from the auth session, which is the
+/// authority on it.
 class SeniorProfileScreen extends StatefulWidget {
   const SeniorProfileScreen({super.key});
 
@@ -12,23 +14,38 @@ class SeniorProfileScreen extends StatefulWidget {
 }
 
 class _SeniorProfileScreenState extends State<SeniorProfileScreen> {
-  static const _name = 'Anita Desai';
-  static const _phone = '+91 98111 22334';
   static const _address = 'Greater Kailash, New Delhi';
 
   String _roleLabel = 'Senior Citizen';
+  String _name = '';
+  String _phone = '';
 
   @override
   void initState() {
     super.initState();
-    _loadRole();
+    _load();
   }
 
-  Future<void> _loadRole() async {
-    final role = await UserSession.getSavedRole();
+  Future<void> _load() async {
+    final session = SessionService.instance.session;
+    if (mounted) {
+      setState(() {
+        _roleLabel =
+            session?.role == 'volunteer' ? 'Volunteer' : 'Senior Citizen';
+      });
+    }
+
+    MyProfile? profile;
+    try {
+      profile = await ProfileService.instance.fetchMe();
+    } catch (_) {
+      // Leave the fields blank rather than showing a placeholder identity.
+      return;
+    }
     if (!mounted) return;
     setState(() {
-      _roleLabel = role == 'volunteer' ? 'Volunteer' : 'Senior Citizen';
+      _name = profile?.fullName?.trim() ?? '';
+      _phone = profile?.phoneNumber?.trim() ?? '';
     });
   }
 
@@ -72,10 +89,10 @@ class _SeniorProfileScreenState extends State<SeniorProfileScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          const Center(
+          Center(
             child: Text(
-              _name,
-              style: TextStyle(
+              _name.isEmpty ? 'Your profile' : _name,
+              style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
                 color: AppColors.textPrimary,
@@ -93,7 +110,11 @@ class _SeniorProfileScreenState extends State<SeniorProfileScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          const _ProfileField(label: 'Phone', value: _phone, icon: Icons.phone_outlined),
+          _ProfileField(
+            label: 'Phone',
+            value: _phone,
+            icon: Icons.phone_outlined,
+          ),
           const SizedBox(height: 10),
           const _ProfileField(
             label: 'Address',
@@ -130,6 +151,7 @@ class _SeniorProfileScreenState extends State<SeniorProfileScreen> {
   }
 
   static String _initials(String name) {
+    if (name.trim().isEmpty) return '?';
     final parts = name.trim().split(RegExp(r'\s+'));
     if (parts.isEmpty) return '?';
     if (parts.length == 1) return parts.first[0].toUpperCase();

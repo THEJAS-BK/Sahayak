@@ -49,8 +49,10 @@ class MyProfile {
       role: json['role']?.toString(),
       isActive: (json['is_active'] as bool?) ?? true,
       verificationStatus: (json['verification_status'] ?? 'NONE').toString(),
-      fullName: profile['full_name']?.toString(),
-      phoneNumber: profile['phone_number']?.toString(),
+      // The profile row is camelCased by the backend (users.service `shape`),
+      // unlike the envelope fields above, which stay snake_case.
+      fullName: profile['fullName']?.toString(),
+      phoneNumber: profile['phoneNumber']?.toString(),
       organization: profile['organization']?.toString(),
       skills: rawSkills is List ? rawSkills.map((e) => e.toString()).toList() : const [],
       homeLatitude: _double(profile['homeLatitude']),

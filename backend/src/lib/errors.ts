@@ -28,6 +28,14 @@ export const errors = {
     new ApiError(code, message, Status.BadRequest, details),
   unauthorized: (message = 'Authentication required') =>
     new ApiError('UNAUTHENTICATED', message, Status.Unauthorized),
+  /**
+   * A wrong/expired OTP. Deliberately *not* UNAUTHENTICATED: that code means
+   * "your access token is no good", and clients react to it by discarding the
+   * session and redirecting to sign in again. A mistyped code on the sign-in
+   * form must not throw away a valid session or claim the token expired.
+   */
+  invalidOtp: (message = 'Invalid or expired code') =>
+    new ApiError('INVALID_OTP', message, Status.Unauthorized),
   forbidden: (code = 'FORBIDDEN', message = 'Not allowed') =>
     new ApiError(code, message, Status.Forbidden),
   notFound: (message = 'Not found') => new ApiError('NOT_FOUND', message, Status.NotFound),

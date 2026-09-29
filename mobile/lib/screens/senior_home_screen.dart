@@ -35,6 +35,7 @@ class _SeniorHomeScreenState extends State<SeniorHomeScreen>
   /// accept?" is on the home screen rather than two taps away.
   HelpRequest? _current;
   bool _loadingRequests = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -57,17 +58,29 @@ class _SeniorHomeScreenState extends State<SeniorHomeScreen>
 
   /// Q-02. A failure here must never block the home screen — the senior still
   /// needs the microphone, so the card just stays in its placeholder state.
+  /// The failure is still surfaced, so a dead session reads as a dead session
+  /// and not as "no active request".
   Future<void> _loadRequests() async {
     try {
       final requests = await RequestsService.instance.mine();
       if (!mounted) return;
       setState(() {
         _current = requests.isEmpty ? null : requests.first;
+        _loadError = null;
+        _loadingRequests = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
         _loadingRequests = false;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loadingRequests = false);
+      setState(() {
+        _loadError = 'Check your connection and try again.';
+        _loadingRequests = false;
+      });
     }
   }
 
@@ -231,9 +244,11 @@ class _SeniorHomeScreenState extends State<SeniorHomeScreen>
               _CurrentRequestCard(
                 request: _current,
                 loading: _loadingRequests,
+                error: _loadError,
                 onTap: _current == null
                     ? _openRequests
                     : () => _openCurrentRequest(_current!),
+                onRetry: _loadRequests,
               ),
 
               const SizedBox(height: 12),
@@ -391,12 +406,16 @@ class _SeniorHomeScreenState extends State<SeniorHomeScreen>
 class _CurrentRequestCard extends StatelessWidget {
   final HelpRequest? request;
   final bool loading;
+  final String? error;
   final VoidCallback onTap;
+  final VoidCallback onRetry;
 
   const _CurrentRequestCard({
     required this.request,
     required this.loading,
+    required this.error,
     required this.onTap,
+    required this.onRetry,
   });
 
   @override
@@ -414,6 +433,47 @@ class _CurrentRequestCard extends StatelessWidget {
             Text(
               'Checking your requests...',
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // The list could not be read. Say so rather than claiming there is nothing
+    // to report — an expired session and an empty list look identical
+    // otherwise, and a senior told "no active request" while signed out has no
+    // reason to suspect anything is wrong.
+    if (error != null) {
+      return _CardShell(
+        child: Row(
+          children: [
+            const Icon(Icons.cloud_off, color: AppColors.warning, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Could not check your requests. $error',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: onRetry,
+              style: TextButton.styleFrom(
+                minimumSize: Size.zero,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'Retry',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.accentBlue,
+                ),
+              ),
             ),
           ],
         ),
