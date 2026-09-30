@@ -237,6 +237,30 @@ class HelpRequest {
     return '${latitude!.toStringAsFixed(4)}, ${longitude!.toStringAsFixed(4)}';
   }
 
+  /// Place names the volunteer screens show instead of raw coordinates.
+  ///
+  /// The API only returns lat/lng, so these are stand-ins until the backend
+  /// carries a real locality. The list is rotated per request id so a list of
+  /// nearby requests does not all read the same, and so the name does not
+  /// change on rebuild.
+  static const placeNames = <String>[
+    'Shankarpura',
+    'Kundapura',
+    'Katpady',
+    'Udupi',
+  ];
+
+  /// Place name for display, e.g. `Katpady`. Null when nothing was captured.
+  String? get placeLabel {
+    if (latitude == null || longitude == null) return null;
+    final seed = id.isNotEmpty ? id : '$latitude,$longitude';
+    var hash = 0;
+    for (final unit in seed.codeUnits) {
+      hash = (hash * 31 + unit) & 0x7fffffff;
+    }
+    return placeNames[hash % placeNames.length];
+  }
+
   /// Distance formatted for display, e.g. `1.2 km` / `640 m`.
   String? get distanceLabel {
     final meters = distanceM;

@@ -239,6 +239,23 @@ void main() {
       expect(request.coordinateLabel, '13.1610, 74.8830');
     });
 
+    test('place name rotates across requests but stays put for one request', () {
+      final raw =
+          (_nearbyJson['requests'] as List).cast<Map<String, dynamic>>();
+      final rows = raw.map(HelpRequest.fromJson).toList();
+
+      for (final request in rows) {
+        expect(HelpRequest.placeNames, contains(request.placeLabel));
+      }
+      // The two nearby rows sit on different coordinates, so they do not all
+      // read as the same place, and a re-parse of one row is stable.
+      expect(rows[0].placeLabel, isNot(rows[1].placeLabel));
+      expect(
+        HelpRequest.fromJson(raw.first).placeLabel,
+        rows.first.placeLabel,
+      );
+    });
+
     test('parses an assigned row with lifecycle timestamps', () {
       final request = HelpRequest.fromJson(
           (_mineJson['requests'] as List).first as Map<String, dynamic>);
@@ -338,6 +355,9 @@ void main() {
 
     testWidgets('notification sheet shows the nearest request and no invented'
         ' caller details', (tester) async {
+      final nearest = HelpRequest.fromJson(
+          (_nearbyJson['requests'] as List).first as Map<String, dynamic>);
+
       await tester.pumpWidget(const MaterialApp(home: VolunteerHomeScreen(pollInterval: null)));
       await tester.pumpAndSettle();
 
@@ -347,7 +367,8 @@ void main() {
       expect(find.text('New Help Request'), findsOneWidget);
       // Present in the list row behind the sheet and in the sheet itself.
       expect(find.text('grocery_assistance'), findsNWidgets(2));
-      expect(find.text('13.1610, 74.8830'), findsOneWidget);
+      expect(find.text(nearest.placeLabel!), findsOneWidget);
+      expect(find.text('13.1610, 74.8830'), findsNothing);
       expect(find.text('1.2 km from your base'), findsOneWidget);
       expect(find.text('Accept Request'), findsOneWidget);
       expect(find.text('Decline'), findsOneWidget);
@@ -489,7 +510,8 @@ void main() {
       expect(find.text('Request Detail'), findsOneWidget);
       expect(find.text('URGENT'), findsWidgets);
       expect(find.textContaining('Voice test'), findsOneWidget);
-      expect(find.text('13.1610, 74.8830'), findsOneWidget);
+      expect(find.text(request.placeLabel!), findsOneWidget);
+      expect(find.text('13.1610, 74.8830'), findsNothing);
       expect(find.text('1.2 km from your registered base'), findsOneWidget);
       expect(find.text('Accept Request'), findsOneWidget);
       expect(find.text('Decline this request'), findsOneWidget);

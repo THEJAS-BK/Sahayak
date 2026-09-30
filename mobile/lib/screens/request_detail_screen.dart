@@ -313,7 +313,7 @@ class _LocationCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          if (request.coordinateLabel == null)
+          if (request.placeLabel == null)
             const Text(
               'No coordinates were captured for this request.',
               style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
@@ -325,7 +325,7 @@ class _LocationCard extends StatelessWidget {
                     size: 16, color: AppColors.senior),
                 const SizedBox(width: 6),
                 Text(
-                  request.coordinateLabel!,
+                  request.placeLabel!,
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
