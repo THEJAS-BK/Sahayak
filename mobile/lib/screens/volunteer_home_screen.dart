@@ -688,11 +688,11 @@ class _NotificationSheet extends StatelessWidget {
                     text: 'Raised ${request.createdLabel}',
                   ),
                 ],
-                if (request.coordinateLabel != null) ...[
+                if (request.placeLabel != null) ...[
                   const SizedBox(height: 6),
                   _InfoRow(
                     icon: Icons.location_on_outlined,
-                    text: request.coordinateLabel!,
+                    text: request.placeLabel!,
                   ),
                 ],
                 if (request.distanceLabel != null) ...[

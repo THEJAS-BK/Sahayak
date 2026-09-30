@@ -1,13 +1,36 @@
 # Sahayak Web Portal — Police/Admin Portal Design
 
-> Status: **High-level design / draft**
+> Status: **Implemented.** All ten pages are built and live against the backend
+> endpoints listed below. This document is the design reference the build was
+> made from; where the build deliberately departed from it, the departures are
+> recorded in `plans/web-portal-gaps.md` rather than edited back into this file,
+> so the original design stays legible.
 >
 > Purpose: Define the pages, navigation, responsibilities, major UI sections, and
 > data requirements for the Sahayak **Police Web Portal**.
 >
 > This document is intentionally a product/UI design reference rather than a
-> detailed implementation specification. Exact visual styling can be decided
-> during frontend development.
+> detailed implementation specification. Exact visual styling is settled in
+> `web/src/index.css` (tokens) and `web/src/lib/styles.ts` (component styles).
+
+### Where the build departed from this design
+
+- **Verification detail is a modal, not a page.** Section 6.2 sketches a route.
+  A review queue is read one row at a time, and a route per row meant losing
+  queue position, the back button, and a deep link that cannot survive a
+  refresh. The queue row opens the submitted form in a dialog and closes back
+  into place.
+- **Aadhaar is never shown.** Section 10.2 asks for the senior's identity
+  details. The backend does not return `aadhaar_number` and the console does not
+  display it — see `plans/web-portal-gaps.md`.
+- **`Monitoring` has no settled product** (section 8.2 describes one). It shipped
+  as a status board over `P-01`.
+- **Base/home coordinates are not treated as locations.** Sections 9.3 and 9.4
+  sketch senior home markers. The map plots request and emergency coordinates
+  only; see section "Not built" in the gaps file.
+- **Volunteer list ordering, not a distance column.** See "Deliberate UI
+  constraints" in the gaps file.
+
 
 ---
 
@@ -28,10 +51,18 @@ request monitoring, emergency events, and audit logs.
 
 Relevant existing APIs include:
 
+- `POST /api/auth/otp/request`, `POST /api/auth/otp/verify`, `POST /api/auth/refresh`
+- `GET /api/me`
 - `GET /api/verifications`
 - `GET /api/verifications/:id`
 - `PATCH /api/verifications/:id`
+- `GET /api/requests/:id`
+- `GET /api/police/overview` *(added in the second pass; the Dashboard and
+  Monitoring tiles, so no count is derived from a capped list page)*
 - `GET /api/police/requests`
+- `PATCH /api/police/requests/:id/assign`
+- `GET /api/police/seniors`, `GET /api/police/seniors/:id`
+- `GET /api/police/volunteers`, `GET /api/police/volunteers/:id`
 - `GET /api/police/emergency-events`
 - `PATCH /api/police/emergency-events/:id`
 - `GET /api/audit-logs`

@@ -1,28 +1,36 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/Table';
+import { Button } from '../../components/ui/Button';
+import { Alert } from '../../components/ui/Alert';
+import { AgeCell } from '../../components/ui/AgeCell';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Section } from '../../components/ui/Section';
+import { StatTile } from '../../components/ui/StatTile';
+import { FilterBar, SearchInput } from '../../components/ui/SearchInput';
+import { SkeletonTable, SkeletonTiles } from '../../components/ui/Skeleton';
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/Table';
 import { fetchPoliceRequests } from '../../api/client';
 import type { PoliceRequest, RequestStatus } from '../../api/types';
-import { Activity, RefreshCw } from 'lucide-react';
-
-const statusBadgeVariant: Record<RequestStatus, 'success' | 'warning' | 'error' | 'default'> = {
-  COMPLETED: 'success',
-  ACCEPTED: 'default',
-  IN_PROGRESS: 'default',
-  PENDING: 'warning',
-  MATCHING: 'warning',
-  DISPATCHED: 'warning',
-  CANCELLED: 'error',
-  UNASSIGNED: 'error',
-};
-
-const categoryLabels: Record<string, string> = {
-  grocery_assistance: 'Grocery Assistance',
-  medical_assistance: 'Medical Assistance',
-  transport_assistance: 'Transport Assistance',
-};
+import {
+  categoryLabel,
+  dayEnd,
+  OPEN_STATUSES,
+  priorityLabel,
+  shortId,
+  statusLabel,
+} from '../../lib/format';
+import { priorityTone, requestStatusTone, toneSwatch } from '../../lib/tone';
+import { controlInteractive, pageStack } from '../../lib/styles';
 
 /**
  * DISPATCHED is grouped with UNASSIGNED here, which is what made the old label
@@ -33,32 +41,7 @@ const PENDING_STATUSES: RequestStatus[] = ['PENDING', 'MATCHING'];
 const LIVE_STATUSES: RequestStatus[] = ['ACCEPTED', 'IN_PROGRESS'];
 const AWAITING_STATUSES: RequestStatus[] = ['DISPATCHED', 'UNASSIGNED'];
 
-const OPEN_STATUSES: RequestStatus[] = [...PENDING_STATUSES, ...LIVE_STATUSES, ...AWAITING_STATUSES];
-
 const REFRESH_MS = 15_000;
-
-const selectStyle: React.CSSProperties = {
-  padding: '0.4rem 0.6rem',
-  borderRadius: '0.375rem',
-  border: '1px solid var(--color-border)',
-  background: 'var(--color-surface-white)',
-  fontFamily: 'inherit',
-  fontSize: '0.8125rem',
-  color: 'var(--color-text-primary)',
-  outline: 'none',
-};
-
-/**
- * `<input type="datetime-local">` hands back `YYYY-MM-DDTHH:mm`, which
- * `new Date()` reads as *local midnight* on the day, not the end of it. A
- * `to` of `2026-09-27T14:00` therefore excluded everything raised after 14:00
- * on the day the officer thought they were including.
- */
-function dayEnd(value: string): Date | null {
-  if (value === '') return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
 
 export const Monitoring: React.FC = () => {
   const navigate = useNavigate();
@@ -109,7 +92,7 @@ export const Monitoring: React.FC = () => {
     } catch (err) {
       // A failed refresh must not wipe a board that was reading fine a second
       // ago; surface the error and keep the last good data on screen.
-      setError(err instanceof Error ? err.message : 'Failed to load requests');
+      setError(err instanceof Error ? err.message : 'Could not load the open requests');
     } finally {
       setLoading(false);
     }
@@ -160,11 +143,13 @@ export const Monitoring: React.FC = () => {
     });
   }, [openRequests, statusFilter, categoryFilter, assignedFilter, searchQuery, toDate]);
 
+  // The same three buckets as the tiles, in one declaration, so the bar and the
+  // numbers above it can never disagree about what a colour means.
   const segments = useMemo(
     () => [
-      { key: 'pending', label: 'Waiting for a volunteer', value: pending.length, className: 'bg-amber-400' },
-      { key: 'operational', label: 'A volunteer is on it', value: operational.length, className: 'bg-blue-500' },
-      { key: 'awaiting', label: 'Offer not answered', value: awaiting.length, className: 'bg-[var(--color-status-error)]' },
+      { key: 'pending', label: 'Waiting for a volunteer', value: pending.length, tone: 'warning' as const },
+      { key: 'operational', label: 'A volunteer is on it', value: operational.length, tone: 'neutral' as const },
+      { key: 'awaiting', label: 'Offer not answered', value: awaiting.length, tone: 'error' as const },
     ],
     [pending.length, operational.length, awaiting.length],
   );
@@ -190,149 +175,64 @@ export const Monitoring: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: '1rem',
-          flexWrap: 'wrap',
-        }}
-      >
-        <div>
-          <h1
-            style={{
-              fontSize: '1.875rem',
-              fontWeight: 700,
-              margin: 0,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.625rem',
-            }}
-          >
-            <Activity size={26} style={{ color: '#2563eb' }} />
-            Live Monitoring
-          </h1>
-          <p style={{ color: 'var(--color-text-secondary)', margin: '0.4rem 0 0' }}>
-            Operational overview of open assistance requests, refreshed every 15 seconds.
-          </p>
-        </div>
-
-        {updatedAt && (
-          <span
-            style={{
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              padding: '0.4rem 0.75rem',
-              borderRadius: '999px',
-              background: 'var(--color-status-success-bg)',
-              color: '#047857',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            ● LIVE · {updatedAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-          </span>
-        )}
-      </div>
-
+    <div style={pageStack}>
+      {/*
+        The page title lives in the header now, so this is the board and the
+        filters. The 15-second freshness stamp moved to the header, where it
+        applies to every page rather than the three that remembered it.
+      */}
       {error && (
-        <div
-          role="alert"
-          style={{
-            padding: '0.75rem 1rem',
-            borderRadius: '0.375rem',
-            backgroundColor: 'var(--color-status-error-bg)',
-            color: 'var(--color-status-error)',
-            fontSize: '0.875rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            justifyContent: 'space-between',
-          }}
+        <Alert
+          onRetry={() => void load()}
+          hint="The board below is the last set of rows that loaded. Nothing has been cleared."
         >
-          <span>{error}</span>
-          <button
-            type="button"
-            onClick={() => void load()}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.375rem',
-              padding: '0.25rem 0.5rem',
-              borderRadius: '0.375rem',
-              border: '1px solid currentColor',
-              background: 'none',
-              color: 'inherit',
-              fontFamily: 'inherit',
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            <RefreshCw size={12} />
-            Retry
-          </button>
+          {error}
+        </Alert>
+      )}
+
+      {loading && requests.length === 0 ? (
+        <SkeletonTiles count={4} />
+      ) : (
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          {/*
+            The three that need a decision come first and are the only raised
+            objects on the page. Total open is context, so it sits beside them at
+            the same size rather than as a fourth tile competing for attention.
+          */}
+          <StatTile
+            label="Offer not answered"
+            value={awaiting.length}
+            tone={awaiting.length > 0 ? 'error' : 'neutral'}
+            hint={awaiting.length > 0 ? 'A volunteer was asked and has not replied' : undefined}
+          />
+          <StatTile
+            label="Waiting for a volunteer"
+            value={pending.length}
+            tone={pending.length > 0 ? 'warning' : 'neutral'}
+            hint={pending.length > 0 ? 'Dispatched with nobody in range' : undefined}
+          />
+          <StatTile
+            label="A volunteer is on it"
+            value={operational.length}
+            tone="success"
+            hint={`${openRequests.length} open in total`}
+          />
         </div>
       )}
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-          gap: '1rem',
-        }}
-      >
-        {[
-          { label: 'Current open', value: openRequests.length },
-          { label: 'Waiting for a volunteer', value: pending.length },
-          { label: 'A volunteer is on it', value: operational.length },
-          { label: 'Offer not answered', value: awaiting.length },
-        ].map((tile) => (
-          <Card
-            key={tile.label}
-            style={{
-              padding: '1.25rem',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              textAlign: 'center',
-            }}
-          >
-            <span
-              style={{
-                fontSize: '0.6875rem',
-                fontWeight: 700,
-                color: 'var(--color-text-secondary)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-              }}
-            >
-              {tile.label}
-            </span>
-            <span style={{ fontSize: '2rem', fontWeight: 700, marginTop: '0.5rem' }}>{tile.value}</span>
-          </Card>
-        ))}
-      </div>
-
-      <Card style={{ padding: '1.25rem 1.5rem' }}>
-        <h3 style={{ margin: '0 0 1rem 0', fontSize: '0.9375rem', fontWeight: 600 }}>
-          Where the open requests are sitting
-        </h3>
-
+      <Section title="Where the open requests are sitting" unbordered>
         {openRequests.length === 0 ? (
           <div
             style={{
               height: '2.5rem',
               width: '100%',
-              background: 'var(--color-surface-workspace)',
-              borderRadius: '999px',
+              background: 'var(--color-sunken)',
+              borderRadius: 'var(--radius-pill)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '0.75rem',
-              color: 'var(--color-text-secondary)',
+              fontSize: 'var(--text-meta)',
+              color: 'var(--color-ink-muted)',
             }}
           >
             No open requests
@@ -341,18 +241,20 @@ export const Monitoring: React.FC = () => {
           <div
             style={{
               width: '100%',
-              height: '2.5rem',
+              height: '0.5rem',
               display: 'flex',
-              borderRadius: '999px',
+              borderRadius: 'var(--radius-pill)',
               overflow: 'hidden',
-              background: 'var(--color-surface-workspace)',
+              background: 'var(--color-sunken)',
             }}
           >
             {segments.map((segment) => (
               <div
                 key={segment.key}
-                className={segment.className}
-                style={{ width: `${(segment.value / total) * 100}%` }}
+                style={{
+                  width: `${(segment.value / total) * 100}%`,
+                  background: toneSwatch[segment.tone],
+                }}
                 title={`${segment.label}: ${segment.value}`}
               />
             ))}
@@ -364,201 +266,214 @@ export const Monitoring: React.FC = () => {
             display: 'flex',
             flexWrap: 'wrap',
             gap: '1rem',
-            marginTop: '1rem',
-            fontSize: '0.75rem',
-            color: 'var(--color-text-secondary)',
-            fontWeight: 600,
+            marginTop: '0.75rem',
+            fontSize: 'var(--text-meta)',
+            color: 'var(--color-ink-muted)',
           }}
         >
           {segments.map((segment) => (
             <span key={segment.key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span className={`h-2.5 w-2.5 rounded-full ${segment.className}`} />
-              {segment.label} ({segment.value})
+              <span
+                aria-hidden="true"
+                style={{
+                  width: '0.5rem',
+                  height: '0.5rem',
+                  borderRadius: '50%',
+                  background: toneSwatch[segment.tone],
+                }}
+              />
+              {segment.label} <span className="tnum" style={{ fontWeight: 600 }}>{segment.value}</span>
             </span>
           ))}
         </div>
-      </Card>
+      </Section>
 
-      <Card>
-        <div
-          style={{
-            padding: '1rem 1.25rem',
-            borderBottom: '1px solid var(--color-border)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '0.75rem',
-            background: 'var(--color-surface-workspace)',
-          }}
-        >
-          <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 600 }}>Open requests</h3>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <input
-              type="text"
-              aria-label="Search by senior or volunteer"
-              placeholder="Search senior/volunteer…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ ...selectStyle, minWidth: '190px' }}
-            />
-            <select
-              aria-label="Status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'All' | RequestStatus)}
-              style={selectStyle}
-            >
-              <option value="All">All statuses</option>
-              {OPEN_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {status.replace(/_/g, ' ')}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Priority"
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value as 'All' | 'URGENT' | 'NORMAL')}
-              style={selectStyle}
-            >
-              <option value="All">All priorities</option>
-              <option value="URGENT">Urgent</option>
-              <option value="NORMAL">Normal</option>
-            </select>
-            <select
-              aria-label="Category"
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              style={selectStyle}
-            >
-              <option value="All">All categories</option>
-              {categories.map((category) => (
-                <option key={category} value={category}>
-                  {categoryLabels[category] ?? category.replace(/_/g, ' ')}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Assignment"
-              value={assignedFilter}
-              onChange={(e) => setAssignedFilter(e.target.value as 'All' | 'Assigned' | 'Unassigned')}
-              style={selectStyle}
-            >
-              <option value="All">Any assignment</option>
-              <option value="Assigned">Assigned</option>
-              <option value="Unassigned">Unassigned</option>
-            </select>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem' }}>
-              From
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                style={selectStyle}
+      <Card flush>
+        <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-rule)' }}>
+          <Section
+            title="Open requests"
+            unbordered
+            actions={
+              <span className="tnum" style={{ fontSize: 'var(--text-meta)', color: 'var(--color-ink-muted)' }}>
+                {filteredRequests.length} shown
+              </span>
+            }
+          >
+            <FilterBar>
+              <SearchInput
+                value={searchQuery}
+                onChange={setSearchQuery}
+                label="Search senior or volunteer"
+                placeholder="Search senior/volunteer…"
+                width="220px"
               />
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem' }}>
-              To
-              <input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                style={selectStyle}
-              />
-            </label>
-
-            {hasFilters && (
-              <button
-                type="button"
-                onClick={resetFilters}
-                style={{
-                  ...selectStyle,
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  textDecoration: 'underline',
-                }}
+              <select
+                aria-label="Status"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as 'All' | RequestStatus)}
+                style={controlInteractive}
               >
-                Clear
-              </button>
-            )}
-          </div>
+                <option value="All">All statuses</option>
+                {OPEN_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {statusLabel(status)}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Priority"
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value as 'All' | 'URGENT' | 'NORMAL')}
+                style={controlInteractive}
+              >
+                <option value="All">All priorities</option>
+                <option value="URGENT">Urgent</option>
+                <option value="NORMAL">Normal</option>
+              </select>
+              <select
+                aria-label="Category"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                style={controlInteractive}
+              >
+                <option value="All">All categories</option>
+                {categories.map((category) => (
+                  <option key={category} value={category}>
+                    {categoryLabel(category)}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Assignment"
+                value={assignedFilter}
+                onChange={(e) => setAssignedFilter(e.target.value as 'All' | 'Assigned' | 'Unassigned')}
+                style={controlInteractive}
+              >
+                <option value="All">Any assignment</option>
+                <option value="Assigned">Assigned</option>
+                <option value="Unassigned">Unassigned</option>
+              </select>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: 'var(--text-meta)' }}>
+                From
+                <input
+                  type="date"
+                  aria-label="Raised from"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  style={controlInteractive}
+                />
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: 'var(--text-meta)' }}>
+                To
+                <input
+                  type="date"
+                  aria-label="Raised up to"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  style={controlInteractive}
+                />
+              </label>
+
+              {hasFilters && (
+                <Button variant="ghost" size="sm" onClick={resetFilters}>
+                  Clear filters
+                </Button>
+              )}
+            </FilterBar>
+          </Section>
         </div>
 
         {loading && openRequests.length === 0 ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
-            Loading operations…
-          </div>
+          <SkeletonTable columns={7} rows={8} />
         ) : (
-          <Table>
+          <Table density="dense" stickyHeader>
+            <TableCaption>
+              Open assistance requests, the longest waiting first. Select a row to open the request.
+            </TableCaption>
             <TableHead>
               <TableRow>
-                <TableHeader>ID</TableHeader>
+                {/* Age leads. "How long has this person been waiting" is the
+                    question this page exists to answer, and it was previously
+                    the last column, as a formatted timestamp. */}
+                <TableHeader width="5rem">Waiting</TableHeader>
                 <TableHeader>Senior</TableHeader>
                 <TableHeader>Category</TableHeader>
                 <TableHeader>Volunteer</TableHeader>
                 <TableHeader>Status</TableHeader>
                 <TableHeader>Priority</TableHeader>
-                <TableHeader>Age</TableHeader>
+                <TableHeader align="right" width="6rem">Ref</TableHeader>
               </TableRow>
             </TableHead>
             <TableBody>
               {filteredRequests.map((req) => (
-                <TableRow
-                  key={req.id}
-                  onClick={() => navigate(`/requests/${req.id}`)}
-                  style={{ cursor: 'pointer' }}
-                >
+                <TableRow key={req.id} onClick={() => navigate(`/requests/${req.id}`)}>
                   <TableCell>
-                    <span style={{ fontWeight: 500, color: 'var(--color-text-secondary)' }}>
-                      {req.id.slice(0, 8)}
-                    </span>
+                    <AgeCell
+                      createdAt={req.created_at}
+                      status={req.status}
+                      now={updatedAt!.getTime()}
+                    />
                   </TableCell>
                   <TableCell>
-                    <span style={{ fontWeight: 600 }}>
+                    {/*
+                      The row is clickable for the mouse, but a <tr> with a
+                      handler is invisible to a keyboard. This link is the
+                      focusable, announced path to the same place.
+                    */}
+                    <Link
+                      to={`/requests/${req.id}`}
+                      style={{ fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                    >
                       {req.senior.full_name ?? req.senior.email ?? 'Unknown'}
-                    </span>
+                    </Link>
                   </TableCell>
-                  <TableCell style={{ color: 'var(--color-text-secondary)', fontWeight: 500 }}>
-                    {categoryLabels[req.category] ?? req.category.replace(/_/g, ' ')}
-                  </TableCell>
-                  <TableCell style={{ color: 'var(--color-text-secondary)' }}>
-                    {req.assigned_volunteer?.full_name ?? (
-                      <span style={{ color: 'var(--color-status-warning)' }}>Nobody</span>
-                    )}
+                  <TableCell style={{ color: 'var(--color-ink-muted)' }}>{categoryLabel(req.category)}</TableCell>
+                  <TableCell style={{ color: 'var(--color-ink-muted)' }}>
+                    {req.assigned_volunteer?.full_name ?? <span aria-label="No volunteer assigned">Nobody</span>}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={statusBadgeVariant[req.status]}>{req.status}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={req.priority === 'urgent' ? 'error' : 'default'}>
-                      {req.priority.toUpperCase()}
+                    <Badge tone={requestStatusTone(req.status)} state dot>
+                      {statusLabel(req.status)}
                     </Badge>
                   </TableCell>
-                  <TableCell style={{ color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
-                    {new Date(req.created_at).toLocaleString(undefined, {
-                      dateStyle: 'medium',
-                      timeStyle: 'short',
-                    })}
+                  <TableCell>
+                    <Badge tone={priorityTone(req.priority)} state={req.priority === 'urgent'}>
+                      {priorityLabel(req.priority)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell align="right">
+                    <span className="mono" style={{ color: 'var(--color-ink-muted)' }}>
+                      {shortId(req.id)}
+                    </span>
                   </TableCell>
                 </TableRow>
               ))}
 
               {filteredRequests.length === 0 && (
                 <TableRow>
-                  <TableCell>
-                    <div
-                      style={{
-                        padding: '2.5rem',
-                        textAlign: 'center',
-                        color: 'var(--color-text-secondary)',
-                        fontSize: '0.875rem',
-                      }}
-                    >
-                      {openRequests.length === 0
-                        ? 'No open requests in this window.'
-                        : 'No open request matches these filters.'}
-                    </div>
+                  <TableCell colSpan={7}>
+                    <EmptyState
+                      icon={<ListGlyph />}
+                      title={
+                        openRequests.length === 0
+                          ? 'No open requests'
+                          : 'No open request matches these filters'
+                      }
+                      description={
+                        openRequests.length === 0
+                          ? 'Nothing is waiting on a volunteer right now.'
+                          : `${openRequests.length} open request${
+                              openRequests.length === 1 ? '' : 's'
+                            } on the board, none matching the current filters.`
+                      }
+                      action={
+                        hasFilters ? (
+                          <Button variant="outline" size="sm" onClick={resetFilters}>
+                            Clear filters
+                          </Button>
+                        ) : undefined
+                      }
+                    />
                   </TableCell>
                 </TableRow>
               )}
@@ -569,3 +484,9 @@ export const Monitoring: React.FC = () => {
     </div>
   );
 };
+
+const ListGlyph: React.FC = () => (
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M4 6h16M4 12h16M4 18h10" strokeLinecap="round" />
+  </svg>
+);

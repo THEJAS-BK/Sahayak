@@ -2,15 +2,16 @@
 
 Verified by reading the code on 2026-09-27, and updated as work landed. This
 supersedes the earlier "no backend list endpoints" claim, which was out of date.
+Re-verified against the backend routes and zod schemas on 2026-09-30.
 
 ## Status
 
 | # | Page | Route | Endpoint | State |
 |---|---|---|---|---|
-| 1 | Dashboard | `/` | `GET /police/overview` (P-08, new), `GET /audit-logs` | built |
+| 1 | Dashboard | `/` | `GET /police/overview` (P-08, new), `GET /police/requests` (recent rows) | built — **shared overview poller** |
 | 2 | Requests | `/requests` | `GET /police/requests` | built — **keyset pagination wired** |
 | 3 | Request Detail | `/requests/:requestId` | `GET /requests/:id`, `GET /police/volunteers`, `PATCH /police/requests/:id/assign` | built |
-| 4 | Verification | `/verification` | `GET /verifications`, `GET /verifications/:id` (V-02), `PATCH /verifications/:id` | built — **detail drawer + reject reason** |
+| 4 | Verification | `/verification` | `GET /verifications`, `GET /verifications/:id` (V-02), `PATCH /verifications/:id` | built — **detail is a modal, not a route** |
 | 5 | Emergencies | `/emergencies` | `GET /police/emergency-events` (E-02), `PATCH /police/emergency-events/:id` (E-03) | built |
 | 6 | Seniors | `/seniors`, `/seniors/:seniorId` | `GET /police/seniors` (P-06), `GET /police/seniors/:id` (P-07) | built — **route added** |
 | 7 | Volunteers | `/volunteers`, `/volunteers/:volunteerId` | `GET /police/volunteers` (P-04), `GET /police/volunteers/:id` (P-05b) | built — **detail route added** |
@@ -148,7 +149,95 @@ page, so any total above the page size was wrong and nothing said so.
   immersive: no header, no padding, `100dvh`, isolated stacking context so
   Leaflet's `z-index` values stop competing with the sidebar.
 
+## Third pass: design system and console rebuild
+
+No endpoint changed in this pass. Every page was rewritten onto a shared
+primitive set, and the bugs found were all in how the frontend talked to
+endpoints that already existed.
+
+### `web/src/index.css`
+
+Rebuilt as a token layer: semantic names (`--color-navy`, `--color-ink-muted`,
+`--color-rule`, `--radius-panel`, `--shadow-overlay`, `--text-*`) over raw
+values, plus `:focus-visible` rings, `prefers-reduced-motion`, Leaflet chrome
+styling, `.tnum` / `.mono` / `.sr-only` utilities, and compatibility aliases for
+the old raw names still referenced from behind the refactor.
+
+### `web/src/components/ui/`
+
+`Badge`, `Button`, `Card`, `Table`, `Section`, `Field`, `Modal`, `Alert`,
+`EmptyState`, `Skeleton`, `PageHeader`, `StatTile`, `SearchInput`, `FilterChip`,
+`AgeCell`. Seniors and Volunteers each carried a byte-identical private
+`FilterChip`; Monitoring's used `aria-pressed` while the others announced no
+state at all. Hue encodes lifecycle, not interactivity: a status badge is the
+only thing in the console that uses colour to mean "state".
+
+`Alert` grew a `note` role — a standing caveat that must reach a screen reader
+but must not be announced assertively, or a page that mounts with one shoves
+every other announcement off the queue.
+
+### Bugs fixed, all frontend-side
+
+- **`/police/overview` was reporting the wrong day.** The backend falls back to
+  the *server's* day when `from`/`to` are absent, and Neon runs UTC — so
+  "completed today" was wrong for every officer east of UTC+0 for eight hours
+  after midnight local. `localDayWindow()` in `lib/format.ts` now sends the
+  browser's day, and `useOverview` uses it.
+- **`dayEnd()` excluded the last day.** `2026-09-27T14:00` was read as 14:00 on
+  the 27th rather than the end of it, so an officer's final hours were missing
+  from every date-filtered board.
+- **`AgeCell` called `Date.now()` during render.** The prop was already threaded
+  from the fetch, but `now` was optional with a `Date.now()` fallback, so the
+  fallback silently reintroduced the drift the prop existed to prevent. `now` is
+  now required, which is also why the three call sites assert it: the rows only
+  exist once a fetch has landed.
+- **`Verification` had a route but no screen.** `/verification/:verificationId`
+  was registered and the file deleted in an earlier pass; the detail view is a
+  modal reached from a queue row, so the route is now gone rather than dead.
+- `Header`, `Map` and `AuditLogs` referenced tokens that were never defined
+  (`--shadow-md`, `--color-text`), which resolved to nothing at paint time.
+
+### Shell
+
+`Header` owns the page title, the live attention count and the server freshness
+timestamp. `OverviewProvider` wraps the authenticated tree and polls `P-08` every
+30 s so the badge, the Dashboard tiles and Monitoring share one request instead
+of three. `RequireAuth` rejects a non-police session at the router, with a
+sign-out button, because every route behind it would otherwise render a shell of
+empty pages and 403s.
+
+### Code splitting
+
+Every route was eagerly imported, so Leaflet shipped to officers who never opened
+the map: 536 kB / 157 kB gzipped in one chunk. Routes are now `React.lazy`, with
+the `Suspense` boundary *inside* `Layout` so an arriving chunk does not blank the
+sidebar and header the officer is navigating with.
+
+```text
+before   index.js  278 kB │ gzip  88 kB   (was 536 kB │ gzip 157 kB)
+         Map.js    165 kB │ gzip  49 kB   (Leaflet, loaded only on /map)
+```
+
+`Login` stays eager — it is where an unauthenticated officer lands, so making it
+wait on a chunk request adds a round trip to the one screen with nothing to show
+first.
+
+### Contract audit
+
+Every function in `web/src/api/client.ts` was checked against the mounted route
+and its zod schema. All paths, query parameters, response wrappers, and status
+enums match; `RequestStatus` is identical to the backend enum and
+`RequestPriority` is lowercase as the backend expects. Two things worth recording
+because they are easy to get wrong:
+
+- **`actor_id='null'`** is a literal string, not the string `"null"`. `P-02`
+  translates it to SQL `NULL`. The Audit page sends it as typed.
+- **`INVALID_OTP` is deliberately not `UNAUTHENTICATED`.** The client discards the
+  session on a 401 `UNAUTHENTICATED`, so a mistyped code at sign-in would throw
+  away a valid session and claim the token expired.
+
 ## Not built, and why
+
 
 Nothing remains in this list. The two entries below are kept because they record
 why each page ended up shaped the way it did.
@@ -231,6 +320,31 @@ Second pass:
   hardcoded `123456`, pre-filled it into the field, and printed it on the card,
   so any deployed bundle could be guessed into. It is now read from
   `import.meta.env.VITE_OTP_DEV_CODE` and gated on `import.meta.env.DEV`.
+- **`GET /verifications` takes no `search`.** The queue's search box says so in
+  its placeholder and filters the loaded page, for the same reason the Requests
+  one is labelled "Search loaded rows". Paging the whole table to filter it would
+  be worse than the limitation.
+- **A senior with no emergency contact is called out**, not shown as a dash. It
+  is a gap an officer can act on, unlike an optional field that is simply blank.
+- **Volunteer base coordinates carry a standing caveat** on the detail page. They
+  are whatever was typed at registration and are often only a locality. The
+  dispatch `distance_m` is real and is not caveated.
+- **`REVIEWED` on an emergency event is neutral, not resolved.** It means an
+  officer has seen it. Green there would claim the senior is safe.
+
+## Known limitations
+
+1. **No automated tests for `web/`.** No test runner and no component tests exist
+   for the console; the refactor's verification is typecheck, lint, build, and the
+   contract audit above. Worth adding before the next round of UI work.
+2. **`oxlint` warns on every page's fetch-on-mount** (`set-state-in-effect`) and
+   on `useOverview.tsx` (`only-export-components`). Both are the rule
+   over-reaching: synchronising with the API *is* the external-system case the
+   rule's own help text describes, and the second is only about fast-refresh
+   ergonomics while editing. No errors.
+3. **`Monitoring` still has no defined product** — see below.
+4. **No live position.** `current_*` only exists once a push channel ships.
+
 
 ## Verification
 

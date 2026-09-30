@@ -1,35 +1,116 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+/*
+ * The design system.
+ *
+ * One rule governs the palette: hue encodes lifecycle state and nothing else.
+ * There is no "interactive" colour — links and buttons are ink on white, and
+ * the only hues in the interface are the success/warning/error triad. The single
+ * exception is the GIS map, which is genuinely categorical and keeps its own
+ * four marker colours.
+ *
+ * Everything is named by role, not by hue, so a surface can be restyled without
+ * touching call sites and no call site can invent a colour.
+ *
+ * Each state ink was picked to clear WCAG AA against its own tint. The previous
+ * pairings measured 1.9:1 (warning), 2.0:1 (success) and 3.0:1 (error) — all
+ * three badge variants failed, and the labels were 12px bold.
+ */
+@theme {
+  /* Surfaces. A page is three planes, not five near-identical greys. */
+  --color-canvas: #f6f7f9; /* the workspace behind everything */
+  --color-raised: #ffffff; /* cards, tables, panels */
+  --color-sunken: #eef1f5; /* inset wells, table header rules, code */
+
+  /* Rules. `--color-rule` is a shade darker than the old #E2E8F0, which was
+     nearly invisible as a 1px hairline on white. */
+  --color-rule: #dde2e9;
+  --color-rule-strong: #c3cbd6;
+
+  /* Ink. */
+  --color-ink: #131a26;
+  --color-ink-muted: #5f6b7a; /* 5.4:1 on --color-raised */
+  --color-ink-inverse: #ffffff;
+  --color-ink-on-navy: #a7b2c2; /* 8.1:1 on --color-navy */
+
+  /* Navy: the sidebar and header, and every primary control. */
+  --color-navy: #131a26;
+  --color-navy-raised: #1e2735;
+  --color-navy-rule: #2a3547;
+
+  /* Lifecycle state: a tint to sit on, an ink to read. */
+  --color-success-tint: #e4f5ec;
+  --color-success-ink: #0a6b45; /* 5.8:1 on its tint */
+  --color-warning-tint: #fdf0d5;
+  --color-warning-ink: #8a5407; /* 5.6:1 on its tint */
+  --color-error-tint: #fce7e7;
+  --color-error-ink: #96201f; /* 7.0:1 on its tint */
+  --color-neutral-tint: #eef1f5;
+  --color-neutral-ink: #4a5563;
+
+  /*
+   * Focus. Deliberately ink rather than a blue ring: a focus indicator is not a
+   * status, and reusing a hue here is how an operator learns to ignore one. On
+   * dark surfaces the ring flips to white — see `.on-navy :focus-visible`.
+   */
+  --color-focus: #131a26;
+
+  /* Type. Eleven steps is what the interface actually needs; the old code used
+     ten undocumented rem values across the pages. */
+  --text-label: 0.6875rem; /* 11px — uppercase state labels only */
+  --text-label--line-height: 1rem;
+  --text-meta: 0.75rem; /* 12px — supporting meta */
+  --text-meta--line-height: 1.125rem;
+  --text-caption: 0.8125rem; /* 13px — form labels, dense table cells */
+  --text-caption--line-height: 1.25rem;
+  --text-body: 0.875rem; /* 14px — table cells, body copy */
+  --text-body--line-height: 1.375rem;
+  --text-lead: 0.9375rem; /* 15px — nav, card titles */
+  --text-lead--line-height: 1.375rem;
+  --text-title: 1.125rem; /* 18px — section titles */
+  --text-title--line-height: 1.625rem;
+  --text-display: 1.375rem; /* 22px — page titles */
+  --text-display--line-height: 1.75rem;
+  --text-figure: 1.875rem; /* 30px — stat figures */
+  --text-figure--line-height: 2.125rem;
+  --text-figure--font-weight: 700;
+
+  /* Radius. One radius per *kind* of thing, so hierarchy survives. */
+  --radius-control: 0.375rem; /* buttons, inputs, chips */
+  --radius-panel: 0.75rem; /* stat tiles, map panels, dialogs */
+  --radius-pill: 9999px;
+
+  /* Elevation. Two steps. A raised surface means "this is an object", not
+     "this is a section" — sections are a title and a rule. */
+  --shadow-raised: 0 1px 2px rgb(19 26 38 / 0.06), 0 1px 3px rgb(19 26 38 / 0.04);
+  --shadow-overlay: 0 20px 45px rgb(19 26 38 / 0.22);
+}
+
 :root {
-  /* Colors */
-  --color-primary-navy: #0F172A;
-  /* Dark navy for sidebar */
-  --color-primary-navy-hover: #1E293B;
-  --color-surface-workspace: #F8FAFC;
-  /* Clean white/gray workspace */
-  --color-surface-white: #FFFFFF;
+  /*
+   * Legacy aliases. The pages that have not been migrated yet still read
+   * `--color-border`, `--color-text-primary` and friends. These keep them
+   * working and point at the new names, so the last migrated page can delete
+   * this block in one commit.
+   */
+  --color-surface-workspace: var(--color-canvas);
+  --color-surface-white: var(--color-raised);
+  --color-text-primary: var(--color-ink);
+  --color-text-secondary: var(--color-ink-muted);
+  --color-text-inverse: var(--color-ink-inverse);
+  --color-border: var(--color-rule);
+  --color-primary-navy: var(--color-navy);
+  --color-primary-navy-hover: var(--color-navy-raised);
+  --color-status-success: var(--color-success-ink);
+  --color-status-success-bg: var(--color-success-tint);
+  --color-status-warning: var(--color-warning-ink);
+  --color-status-warning-bg: var(--color-warning-tint);
+  --color-status-error: var(--color-error-ink);
+  --color-status-error-bg: var(--color-error-tint);
 
-  --color-text-primary: #0F172A;
-  --color-text-secondary: #64748B;
-  --color-text-inverse: #FFFFFF;
-
-  --color-border: #E2E8F0;
-
-  /* Status Colors */
-  --color-status-success: #10B981;
-  --color-status-success-bg: #D1FAE5;
-  --color-status-warning: #F59E0B;
-  --color-status-warning-bg: #FEF3C7;
-  --color-status-error: #EF4444;
-  --color-status-error-bg: #FEE2E2;
-
-  /* Typography */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-
-  /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 * {
@@ -40,8 +121,8 @@
 
 body {
   font-family: var(--font-sans);
-  background-color: var(--color-surface-workspace);
-  color: var(--color-text-primary);
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -53,6 +134,54 @@ a {
 
 button {
   font-family: inherit;
+}
+
+/*
+ * The browser focus ring is suppressed on every input, select and textarea in
+ * the app, which leaves a keyboard user with nothing at all. This restores it
+ * globally. `:focus-visible` so it only appears for keyboard interaction, and
+ * `:where` for zero specificity so any component style can still override it.
+ */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  /* A hairline control needs the ring drawn outside the border, not on it. */
+  border-radius: 2px;
+}
+
+/* On the navy sidebar the ink ring would be invisible against the background. */
+.on-navy :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline-color: var(--color-ink-inverse);
+}
+
+/*
+ * Figures that change on a poll must not reflow as they tick over a digit
+ * boundary, so they get fixed advance width. Applied to a container rather than
+ * globally because body copy should keep proportional figures.
+ */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Identifier text — truncated UUIDs, audit action names. Monospace because a
+   UUID is read character by character, which needs a fixed advance. */
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  letter-spacing: -0.01em;
+}
+
+/* Visually hidden, still announced. Table captions and icon-button labels. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 
 /* The app shell is a fixed-height frame; pages scroll inside <main>, not the body. */
@@ -75,6 +204,29 @@ button {
   .auth-screen {
     min-height: 100dvh;
   }
+}
+
+/*
+ * Skeletons. The shape of the content that is coming, so the layout does not
+ * jump when the data lands. Shimmer is suppressed under reduced motion, where it
+ * becomes a flat pulse — still a placeholder, no longer movement.
+ */
+@keyframes sahayak-skeleton {
+  0% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.55;
+  }
+}
+
+.skeleton {
+  background: var(--color-sunken);
+  border-radius: var(--radius-control);
+  animation: sahayak-skeleton 1.6s ease-in-out infinite;
 }
 
 /* Emergency markers on the GIS map pulse to draw dispatch attention. */
@@ -115,20 +267,19 @@ button {
   inset: 0;
   border-radius: 50%;
   border: 3px solid #fff;
-  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.45);
+  box-shadow: 0 1px 4px rgba(19, 26, 38, 0.45);
 }
 
 /* Wins over Leaflet's own .leaflet-container rules, which are bundled after this file. */
 html .sahayak-map {
-  background: var(--color-surface-workspace);
+  background: var(--color-canvas);
   font-family: var(--font-sans);
   font-size: 0.8125rem;
 }
 
-/* Leaflet renders its own close button and popup chrome; tune them to the palette. */
 .leaflet-container .leaflet-popup-content-wrapper {
-  border-radius: 0.75rem;
-  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-overlay);
 }
 
 .leaflet-container .leaflet-popup-content {
@@ -136,10 +287,37 @@ html .sahayak-map {
 }
 
 .leaflet-container .leaflet-bar a {
-  color: var(--color-primary-navy);
+  color: var(--color-navy);
 }
 
 .leaflet-container .leaflet-control-attribution {
-  font-size: 0.6875rem;
+  font-size: var(--text-label);
   background: rgb(255 255 255 / 0.85);
+}
+
+/*
+ * An SOS marker pulses forever on every logged emergency. A motion-sensitive
+ * officer does not need that to know an SOS is open, and an endless loop on a
+ * page that also polls every 15 seconds is a lot of movement for nothing.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .sahayak-marker-pulse,
+  .skeleton {
+    animation: none;
+  }
+
+  .sahayak-marker-pulse {
+    opacity: 0.5;
+  }
+
+  .skeleton {
+    opacity: 0.8;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

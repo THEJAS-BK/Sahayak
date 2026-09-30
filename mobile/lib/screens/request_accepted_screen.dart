@@ -330,7 +330,7 @@ class _SummaryCard extends StatelessWidget {
           _row(
             Icons.location_on_outlined,
             'Location',
-            request.coordinateLabel ?? 'Not captured',
+            request.placeLabel ?? 'Not captured',
           ),
           const Divider(height: 20, color: AppColors.divider),
           _row(

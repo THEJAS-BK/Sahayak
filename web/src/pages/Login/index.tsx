@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
+import { Alert } from '../../components/ui/Alert';
+import { Field } from '../../components/ui/Field';
+import { FilterChip } from '../../components/ui/FilterChip';
 import { requestOtp, setSession, verifyOtp } from '../../api/client';
 import { ShieldCheck } from 'lucide-react';
+import { control } from '../../lib/styles';
+import { toneText } from '../../lib/tone';
 
 /**
  * `OTP_DEV_CODE` is a backend escape hatch for local work, not a credential.
@@ -14,24 +19,6 @@ import { ShieldCheck } from 'lucide-react';
 const DEV_OTP_CODE: string | undefined = import.meta.env.DEV
   ? import.meta.env.VITE_OTP_DEV_CODE
   : undefined;
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '0.5rem 0.75rem',
-  borderRadius: '0.375rem',
-  border: '1px solid var(--color-border)',
-  outline: 'none',
-  fontFamily: 'inherit',
-  fontSize: '0.875rem',
-  boxSizing: 'border-box',
-};
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: '0.8125rem',
-  fontWeight: 600,
-  marginBottom: '0.375rem',
-};
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -58,7 +45,7 @@ export const Login: React.FC = () => {
       setCodeSent(true);
       if (DEV_OTP_CODE) setCode(DEV_OTP_CODE);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to request code');
+      setError(err instanceof Error ? err.message : 'Failed to request a code');
     } finally {
       setBusy(false);
     }
@@ -106,58 +93,43 @@ export const Login: React.FC = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'var(--color-primary-navy)',
+        // Navy field, single raised card. The rest of the console is a light
+        // workspace; signing in is the one moment that is not.
+        background: 'var(--color-navy)',
         padding: '1.5rem',
+        minHeight: '100vh',
       }}
     >
       <div
         style={{
           width: '100%',
           maxWidth: '420px',
-          backgroundColor: 'var(--color-surface-white)',
-          borderRadius: '0.75rem',
-          boxShadow: 'var(--shadow-md)',
+          background: 'var(--color-raised)',
+          borderRadius: 'var(--radius-panel)',
+          boxShadow: 'var(--shadow-overlay)',
           padding: '2rem',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-          <ShieldCheck size={28} color="var(--color-primary-navy)" />
-          <h1 style={{ fontSize: '1.375rem', fontWeight: 700, margin: 0 }}>Sahayak Admin</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+          <ShieldCheck size={26} color="var(--color-ink-inverse)" aria-hidden="true" />
+          <h1 style={{ fontSize: 'var(--text-title)', fontWeight: 700, margin: 0, color: 'var(--color-ink)' }}>
+            Sahayak Admin
+          </h1>
         </div>
-        <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', margin: '0 0 1.5rem 0' }}>
+        <p style={{ ...toneText.neutral, fontSize: 'var(--text-body)', margin: '0.375rem 0 1.5rem 0' }}>
           Police verification portal
         </p>
 
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
-          <Button
-            variant={mode === 'otp' ? 'primary' : 'ghost'}
-            size="sm"
-            onClick={() => setMode('otp')}
-          >
-            OTP sign-in
-          </Button>
-          <Button
-            variant={mode === 'token' ? 'primary' : 'ghost'}
-            size="sm"
-            onClick={() => setMode('token')}
-          >
-            Paste token
-          </Button>
+        {/* These are two sign-in methods, not a filter. Announced as a group so
+            the choice is clear rather than two anonymous buttons. */}
+        <div role="group" aria-label="Sign-in method" style={{ display: 'flex', gap: '0.375rem', marginBottom: '1.5rem' }}>
+          <FilterChip label="OTP sign-in" active={mode === 'otp'} onClick={() => setMode('otp')} />
+          <FilterChip label="Paste token" active={mode === 'token'} onClick={() => setMode('token')} />
         </div>
 
         {error && (
-          <div
-            role="alert"
-            style={{
-              padding: '0.75rem',
-              borderRadius: '0.375rem',
-              backgroundColor: 'var(--color-status-error-bg)',
-              color: 'var(--color-status-error)',
-              fontSize: '0.8125rem',
-              marginBottom: '1rem',
-            }}
-          >
-            {error}
+          <div style={{ marginBottom: '1rem' }}>
+            <Alert>{error}</Alert>
           </div>
         )}
 
@@ -169,70 +141,60 @@ export const Login: React.FC = () => {
               void (codeSent ? handleVerify() : handleRequestCode());
             }}
           >
-            <div>
-              <label htmlFor="officer-email" style={labelStyle}>
-                Officer email
-              </label>
-              <input
-                id="officer-email"
-                type="email"
-                autoComplete="username"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
+            <Field label="Officer email">
+              {({ id, style }) => (
+                <input
+                  id={id}
+                  type="email"
+                  autoComplete="username"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  style={{ ...style, width: '100%' }}
+                />
+              )}
+            </Field>
 
             {codeSent && (
-              <div>
-                <label htmlFor="otp-code" style={labelStyle}>
-                  Verification code
-                </label>
-                <input
-                  id="otp-code"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  style={inputStyle}
-                />
-              </div>
+              <Field label="Verification code" hint="Six digits, sent to your police email.">
+                {({ id, style }) => (
+                  <input
+                    id={id}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    // Letter-spacing makes a six-digit code legible as six
+                    // separate digits rather than one smeared number.
+                    style={{ ...style, width: '100%', letterSpacing: '0.3em', fontVariantNumeric: 'tabular-nums' }}
+                  />
+                )}
+              </Field>
             )}
 
-            <Button
-              type="submit"
-              disabled={busy || !email.trim()}
-              style={{ width: '100%' }}
-            >
+            <Button type="submit" disabled={busy || !email.trim()} style={{ width: '100%' }}>
               {busy ? 'Working…' : codeSent ? 'Sign in' : 'Request code'}
             </Button>
 
             {codeSent && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   setCodeSent(false);
                   setCode('');
+                  setError(null);
                 }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  color: 'var(--color-text-secondary)',
-                  fontFamily: 'inherit',
-                  fontSize: '0.8125rem',
-                  textDecoration: 'underline',
-                  cursor: 'pointer',
-                }}
+                style={{ alignSelf: 'flex-start', padding: 0, textDecoration: 'underline' }}
               >
                 Use a different email
-              </button>
+              </Button>
             )}
 
             {DEV_OTP_CODE && (
-              <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', margin: 0 }}>
-                Dev build — the local OTP is <code>{DEV_OTP_CODE}</code>.
+              <p style={{ ...toneText.neutral, fontSize: 'var(--text-label)', margin: 0 }}>
+                Dev build — the local OTP is <span className="mono">{DEV_OTP_CODE}</span>.
               </p>
             )}
           </form>
@@ -244,34 +206,32 @@ export const Login: React.FC = () => {
               void handleSaveToken();
             }}
           >
-            <div>
-              <label htmlFor="access-token" style={labelStyle}>
-                Access token (JWT)
-              </label>
-              <textarea
-                id="access-token"
-                value={tokenValue}
-                onChange={(e) => setTokenValue(e.target.value)}
-                rows={5}
-                placeholder="Paste a police access token…"
-                style={{ ...inputStyle, resize: 'vertical' }}
-              />
-            </div>
-            <div>
-              <label htmlFor="refresh-token" style={labelStyle}>
-                Refresh token (optional)
-              </label>
-              <input
-                id="refresh-token"
-                value={refreshValue}
-                onChange={(e) => setRefreshValue(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
+            <Field label="Access token (JWT)">
+              {({ id, style }) => (
+                <textarea
+                  id={id}
+                  value={tokenValue}
+                  onChange={(e) => setTokenValue(e.target.value)}
+                  rows={5}
+                  placeholder="Paste a police access token…"
+                  style={{ ...control, ...style, width: '100%', resize: 'vertical', fontFamily: 'var(--font-mono)' }}
+                />
+              )}
+            </Field>
+            <Field label="Refresh token (optional)">
+              {({ id, style }) => (
+                <input
+                  id={id}
+                  value={refreshValue}
+                  onChange={(e) => setRefreshValue(e.target.value)}
+                  style={{ ...style, width: '100%' }}
+                />
+              )}
+            </Field>
             <Button type="submit" disabled={busy || !tokenValue.trim()} style={{ width: '100%' }}>
               Save token
             </Button>
-            <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', margin: 0 }}>
+            <p style={{ ...toneText.neutral, fontSize: 'var(--text-label)', margin: 0 }}>
               For local testing only. Anyone with a police token already has console access, so this
               never bypasses a check.
             </p>

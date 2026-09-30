@@ -125,19 +125,6 @@ export interface VerificationListResult {
   next_cursor: string | null;
 }
 
-/** V-02: one registration's submitted form and review trail. */
-export interface VerificationDetail {
-  id: string;
-  user_id: string;
-  role: VerificationRole;
-  form_data: Record<string, unknown>;
-  status: VerificationStatus;
-  created_at: string;
-  reviewed_at: string | null;
-  review_reason: string | null;
-  user: { id: string; email: string };
-}
-
 export interface AuditLog {
   id: string;
   actor_id: string | null;
@@ -305,8 +292,3 @@ export interface PoliceOverview {
   volunteers_available: number;
   generated_at: string;
 }
-
-export type PriorityLabel = 'URGENT' | 'NORMAL';
-
-export const priorityLabel = (p: RequestPriority): PriorityLabel =>
-  p === 'urgent' ? 'URGENT' : 'NORMAL';

@@ -255,10 +255,6 @@ export function fetchVerifications(params?: Record<string, string>): Promise<Ver
     : '';
   return request(`/verifications${query}`);
 }
-export function fetchVerificationDetail(id: string): Promise<{ verification: VerificationDetail }> {
-  return request(`/verifications/${id}`);
-}
-
 /** V-02: the submitted form behind a queue row, so a decision has evidence. */
 export function fetchVerification(id: string): Promise<{ verification: VerificationDetail }> {
   return request(`/verifications/${id}`);
