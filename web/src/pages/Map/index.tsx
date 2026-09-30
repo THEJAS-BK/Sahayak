@@ -6,6 +6,8 @@ import { Link } from 'react-router-dom';
 import { fetchEmergencyEvents, fetchPoliceRequests } from '../../api/client';
 import type { EmergencyEvent, PoliceRequest } from '../../api/types';
 import { Crosshair, Loader2, MapPin, RefreshCw } from 'lucide-react';
+import { Alert } from '../../components/ui/Alert';
+import { categoryLabel, formatDateTime, statusLabel, triggerLabel } from '../../lib/format';
 
 const DEFAULT_CENTER: [number, number] = [20.5937, 78.9629];
 
@@ -113,7 +115,7 @@ function MapBehaviour({ points, fitNonce }: FitBoundsProps) {
 }
 
 const panelClass =
-  'pointer-events-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-white)]/95 shadow-[var(--shadow-md)] backdrop-blur';
+  'pointer-events-auto rounded-xl border border-[var(--color-rule)] bg-[var(--color-raised)]/95 shadow-[var(--shadow-raised)] backdrop-blur';
 
 const ToggleChip: React.FC<{
   active: boolean;
@@ -128,8 +130,8 @@ const ToggleChip: React.FC<{
     aria-pressed={active}
     className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
       active
-        ? 'bg-[var(--color-primary-navy)] text-[var(--color-text-inverse)]'
-        : 'text-[var(--color-text-secondary)] hover:bg-black/5'
+        ? 'bg-[var(--color-navy)] text-[var(--color-ink-inverse)]'
+        : 'text-[var(--color-ink-muted)] hover:bg-black/5'
     }`}
   >
     <span
@@ -137,30 +139,30 @@ const ToggleChip: React.FC<{
       style={{ backgroundColor: active ? color : '#cbd5e1' }}
     />
     <span className="whitespace-nowrap">{label}</span>
-    <span className={active ? 'tabular-nums text-white/60' : 'tabular-nums text-[var(--color-text-secondary)]'}>
+    <span className={active ? 'tabular-nums text-white/60' : 'tabular-nums text-[var(--color-ink-muted)]'}>
       {count}
     </span>
   </button>
 );
 
 const popupLabel: React.CSSProperties = {
-  color: 'var(--color-text-secondary)',
-  fontSize: '0.6875rem',
+  color: 'var(--color-ink-muted)',
+  fontSize: 'var(--text-caption)',
   textTransform: 'uppercase',
   letterSpacing: '0.04em',
   fontWeight: 600,
 };
 
 const PopupRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+  <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'space-between', fontSize: 'var(--text-body)' }}>
     <span style={popupLabel}>{label}</span>
-    <span style={{ color: 'var(--color-text-primary)', fontWeight: 500, textAlign: 'right' }}>{children}</span>
+    <span style={{ color: 'var(--color-ink)', fontWeight: 500, textAlign: 'right' }}>{children}</span>
   </div>
 );
 
 const popupLink: React.CSSProperties = {
-  color: 'var(--color-primary-navy)',
-  fontSize: '0.8125rem',
+  color: 'var(--color-navy)',
+  fontSize: 'var(--text-body)',
   fontWeight: 600,
   textDecoration: 'underline',
 };
@@ -243,7 +245,7 @@ export const MapPage: React.FC = () => {
   );
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-[var(--color-surface-workspace)]">
+    <div className="relative h-full w-full overflow-hidden bg-[var(--color-canvas)]">
       <MapContainer
         center={DEFAULT_CENTER}
         zoom={5}
@@ -291,13 +293,11 @@ export const MapPage: React.FC = () => {
 
                   <p style={{ margin: 0, fontSize: '0.8125rem', lineHeight: 1.4 }}>{request.description}</p>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '1px solid var(--color-border)', paddingTop: '0.5rem' }}>
-                    <PopupRow label="Category">{request.category.replace(/_/g, ' ')}</PopupRow>
-                    <PopupRow label="Status">{request.status.replace(/_/g, ' ')}</PopupRow>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '1px solid var(--color-rule)', paddingTop: '0.5rem' }}>
+                    <PopupRow label="Category">{categoryLabel(request.category)}</PopupRow>
+                    <PopupRow label="Status">{statusLabel(request.status)}</PopupRow>
                     <PopupRow label="Senior">{request.senior.full_name ?? request.senior.email ?? 'Unknown'}</PopupRow>
-                    <PopupRow label="Raised">
-                      {new Date(request.created_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-                    </PopupRow>
+                    <PopupRow label="Raised">{formatDateTime(request.created_at)}</PopupRow>
                   </div>
 
                   <Link to={`/requests/${request.id}`} style={popupLink}>
@@ -336,14 +336,12 @@ export const MapPage: React.FC = () => {
                     </span>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '1px solid var(--color-border)', paddingTop: '0.5rem' }}>
-                    <PopupRow label="Trigger">{event.trigger_type.replace(/_/g, ' ')}</PopupRow>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '1px solid var(--color-rule)', paddingTop: '0.5rem' }}>
+                    <PopupRow label="Trigger">{triggerLabel(event.trigger_type)}</PopupRow>
                     <PopupRow label="Senior">{event.senior.full_name ?? event.senior.email}</PopupRow>
                     <PopupRow label="Contact">{event.senior.phone_number ?? 'Not provided'}</PopupRow>
                     <PopupRow label="Escalated to 112">{event.escalated_to_112 ? 'Yes' : 'No'}</PopupRow>
-                    <PopupRow label="Raised">
-                      {new Date(event.created_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-                    </PopupRow>
+                    <PopupRow label="Raised">{formatDateTime(event.created_at)}</PopupRow>
                   </div>
 
                   <div style={{ display: 'flex', gap: '0.75rem' }}>
@@ -363,29 +361,21 @@ export const MapPage: React.FC = () => {
       </MapContainer>
 
       {error && (
-        <div
-          role="alert"
-          className="absolute left-1/2 top-4 z-[1000] flex -translate-x-1/2 items-center gap-3 rounded-lg border border-[var(--color-status-error)]/30 bg-[var(--color-status-error-bg)] px-4 py-2.5 text-sm font-medium text-[var(--color-status-error)] shadow-[var(--shadow-md)]"
-        >
-          <span>{error}</span>
-          <button
-            type="button"
-            onClick={() => void load(true)}
-            className="rounded-md border border-current px-2 py-0.5 text-xs font-semibold"
-          >
-            Retry
-          </button>
+        // Absolutely positioned over the tiles: the officer must not lose their
+        // pan and zoom to read that a refresh failed.
+        <div className="absolute left-1/2 top-4 z-[1000] w-[min(30rem,calc(100%-2rem))] -translate-x-1/2">
+          <Alert onRetry={() => void load(true)}>{error}</Alert>
         </div>
       )}
 
       <div className="pointer-events-none absolute inset-0 z-[900] flex flex-col justify-between p-3 sm:p-4">
         <div className="flex items-start justify-between gap-3">
           <div className={`${panelClass} px-4 py-3`}>
-            <h1 className="flex items-center gap-2 text-sm font-bold leading-tight text-[var(--color-text-primary)] sm:text-base">
-              <MapPin size={16} className="text-[var(--color-text-secondary)]" />
+            <h1 className="flex items-center gap-2 text-sm font-bold leading-tight text-[var(--color-ink)] sm:text-base">
+              <MapPin size={16} className="text-[var(--color-ink-muted)]" />
               Operational Map
             </h1>
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-[var(--color-text-secondary)]">
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-[var(--color-ink-muted)]">
               <span className="tabular-nums">{locatedRequests.length} requests plotted</span>
               <span aria-hidden="true">·</span>
               <span className="tabular-nums">
@@ -394,7 +384,7 @@ export const MapPage: React.FC = () => {
               {unlocated > 0 && (
                 <>
                   <span aria-hidden="true">·</span>
-                  <span className="font-medium text-[var(--color-status-warning)]" title="Records with no coordinates are not shown as markers.">
+                  <span className="font-medium text-[var(--color-warning-ink)]" title="Records with no coordinates are not shown as markers.">
                     {unlocated} not mappable
                   </span>
                 </>
@@ -425,7 +415,7 @@ export const MapPage: React.FC = () => {
                 type="button"
                 onClick={fitAll}
                 disabled={points.length === 0}
-                className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-black/5 hover:text-[var(--color-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--color-rule)] px-2.5 py-1.5 text-xs font-semibold text-[var(--color-ink-muted)] transition-colors hover:bg-black/5 hover:text-[var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Crosshair size={13} />
                 Fit all
@@ -435,7 +425,7 @@ export const MapPage: React.FC = () => {
                 onClick={() => void load(true)}
                 disabled={refreshing}
                 aria-label="Refresh map data"
-                className="flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs font-semibold text-[var(--color-text-secondary)] transition-colors hover:bg-black/5 hover:text-[var(--color-text-primary)] disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--color-rule)] px-2.5 py-1.5 text-xs font-semibold text-[var(--color-ink-muted)] transition-colors hover:bg-black/5 hover:text-[var(--color-ink)] disabled:opacity-50"
               >
                 <RefreshCw size={13} className={refreshing ? 'animate-spin' : undefined} />
                 {updatedAt
@@ -447,7 +437,7 @@ export const MapPage: React.FC = () => {
         </div>
 
         <div className={`${panelClass} self-start px-4 py-2.5`}>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-medium text-[var(--color-text-secondary)]">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-medium text-[var(--color-ink-muted)]">
             <span className="flex items-center gap-2">
               <span className="h-3 w-3 rounded-full ring-2 ring-white" style={{ backgroundColor: REQUEST_COLOR }} />
               Help request
@@ -472,8 +462,8 @@ export const MapPage: React.FC = () => {
       </div>
 
       {loading && (
-        <div className="absolute inset-0 z-[950] grid place-items-center bg-[var(--color-surface-workspace)]">
-          <span className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+        <div className="absolute inset-0 z-[950] grid place-items-center bg-[var(--color-canvas)]">
+          <span className="flex items-center gap-2 text-sm text-[var(--color-ink-muted)]">
             <Loader2 size={16} className="animate-spin" />
             Loading map data…
           </span>
@@ -483,8 +473,8 @@ export const MapPage: React.FC = () => {
       {!loading && points.length === 0 && !error && (
         <div className="pointer-events-none absolute inset-0 z-[900] grid place-items-center">
           <div className={`${panelClass} max-w-sm px-5 py-4 text-center`}>
-            <p className="text-sm font-semibold text-[var(--color-text-primary)]">Nothing to plot</p>
-            <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+            <p className="text-sm font-semibold text-[var(--color-ink)]">Nothing to plot</p>
+            <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
               No help request or SOS event has coordinates yet. They appear here as soon as one
               does.
             </p>

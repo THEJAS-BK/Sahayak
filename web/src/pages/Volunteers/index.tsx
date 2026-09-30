@@ -1,13 +1,35 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/Table';
+import { Button } from '../../components/ui/Button';
+import { Alert } from '../../components/ui/Alert';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { FilterChip } from '../../components/ui/FilterChip';
+import { Section } from '../../components/ui/Section';
+import { SearchInput } from '../../components/ui/SearchInput';
+import { SkeletonTable } from '../../components/ui/Skeleton';
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/Table';
 import { fetchAssignableVolunteers } from '../../api/client';
 import type { AssignableVolunteer } from '../../api/types';
-import { Search } from 'lucide-react';
+import { toneText } from '../../lib/tone';
+import { pageStack } from '../../lib/styles';
 
 type AvailabilityFilter = 'all' | 'true' | 'false';
+
+const AVAILABILITY_VIEWS: Array<{ value: AvailabilityFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'true', label: 'Available' },
+  { value: 'false', label: 'Unavailable' },
+];
 
 /**
  * P-04, list only.
@@ -17,6 +39,16 @@ type AvailabilityFilter = 'all' | 'true' | 'false';
  * once live position updates ship, so sorting by it would be false precision.
  * `can_assign` from the server is the column that matters.
  */
+
+/** The server's `can_assign` verdict, explained rather than left as a plain No. */
+function availabilityReason(v: AssignableVolunteer): string {
+  if (v.can_assign) return 'Ready';
+  if (!v.is_verified) return 'Not approved';
+  if (v.has_active_assignment) return 'On a job';
+  if (!v.is_available) return 'Off duty';
+  return 'Not available';
+}
+
 export const Volunteers: React.FC = () => {
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
@@ -25,91 +57,87 @@ export const Volunteers: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    fetchAssignableVolunteers({
-      ...(appliedSearch ? { search: appliedSearch } : {}),
-      ...(availability === 'all' ? {} : { available: availability }),
-    })
-      .then((result) => setVolunteers(result.volunteers))
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : 'Failed to load volunteers');
-        setVolunteers([]);
-      })
-      .finally(() => setLoading(false));
+    try {
+      const result = await fetchAssignableVolunteers({
+        ...(appliedSearch ? { search: appliedSearch } : {}),
+        ...(availability === 'all' ? {} : { available: availability }),
+      });
+      setVolunteers(result.volunteers);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load volunteers');
+    } finally {
+      setLoading(false);
+    }
   }, [appliedSearch, availability]);
 
+  useEffect(() => {
+    void load();
+  }, [load]);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <div>
-        <h1 style={{ fontSize: '1.875rem', fontWeight: 700, margin: '0 0 0.5rem 0' }}>Volunteers</h1>
-        <p style={{ color: 'var(--color-text-secondary)', margin: 0 }}>
-          Registered volunteers and whether they can take a job right now.
-        </p>
-      </div>
+    <div style={pageStack}>
+      {error && <Alert onRetry={() => void load()}>{error}</Alert>}
 
-      {error && (
-        <div style={{ padding: '0.75rem 1rem', borderRadius: '0.375rem', backgroundColor: 'rgba(220,38,38,0.08)', color: 'var(--color-status-error)', fontSize: '0.875rem' }}>
-          {error}
-        </div>
-      )}
-
-      <Card>
-        <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {([['all', 'All'], ['true', 'Available'], ['false', 'Unavailable']] as const).map(
-              ([value, label]) => (
-                <ButtonFilter
-                  key={value}
-                  active={availability === value}
-                  label={label}
-                  onClick={() => setAvailability(value)}
-                />
-              ),
-            )}
-          </div>
-
-          <form
-            style={{ position: 'relative', width: '260px' }}
-            onSubmit={(e) => {
-              e.preventDefault();
-              setAppliedSearch(search.trim());
-            }}
+      <Card flush>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--color-rule)' }}>
+          <Section
+            title="Registered volunteers"
+            description="Whether each one can take a job right now. Ordered by readiness by the API."
+            unbordered
+            actions={
+              <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                {AVAILABILITY_VIEWS.map((view) => (
+                  <FilterChip
+                    key={view.value}
+                    group="Availability"
+                    label={view.label}
+                    active={availability === view.value}
+                    onClick={() => setAvailability(view.value)}
+                  />
+                ))}
+              </div>
+            }
           >
-            <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-secondary)' }} />
-            <input
-              type="text"
-              placeholder="Search name or organisation..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.5rem 0.5rem 0.5rem 2.25rem',
-                borderRadius: '0.375rem',
-                border: '1px solid var(--color-border)',
-                outline: 'none',
-                fontFamily: 'inherit',
-                fontSize: '0.875rem',
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setAppliedSearch(search.trim());
               }}
-            />
-          </form>
+              style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}
+            >
+              <SearchInput
+                value={search}
+                onChange={setSearch}
+                label="Search volunteers"
+                placeholder="Search name or organisation…"
+                width="260px"
+              />
+              <Button type="submit" size="sm" variant="outline">
+                Search
+              </Button>
+            </form>
+          </Section>
         </div>
 
-        {loading ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
-            Loading volunteers…
-          </div>
+        {loading && volunteers.length === 0 ? (
+          <SkeletonTable columns={7} rows={8} />
         ) : (
-          <Table>
+          <Table density="dense" stickyHeader>
+            <TableCaption>
+              Registered volunteers and their current availability. Each name links to the
+              volunteer's record.
+            </TableCaption>
             <TableHead>
               <TableRow>
                 <TableHeader>Name</TableHeader>
                 <TableHeader>Organisation</TableHeader>
                 <TableHeader>Skills</TableHeader>
                 <TableHeader>Phone</TableHeader>
-                <TableHeader>Verified</TableHeader>
-                <TableHeader>Availability</TableHeader>
+                <TableHeader>Approval</TableHeader>
+                <TableHeader>Duty</TableHeader>
                 <TableHeader>Can take a job</TableHeader>
               </TableRow>
             </TableHead>
@@ -117,55 +145,77 @@ export const Volunteers: React.FC = () => {
               {volunteers.map((volunteer) => (
                 <TableRow key={volunteer.id}>
                   <TableCell>
-                    <Link to={`/volunteers/${volunteer.id}`} style={{ color: 'var(--color-primary-navy)', fontWeight: 500 }}>
+                    <Link
+                      to={`/volunteers/${volunteer.id}`}
+                      style={{ fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                    >
                       {volunteer.full_name ?? volunteer.email}
                     </Link>
-                    <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.75rem' }}>
+                    <div style={{ ...toneText.neutral, fontSize: 'var(--text-label)' }}>
                       {volunteer.email}
                     </div>
                   </TableCell>
-                  <TableCell>{volunteer.organization ?? '—'}</TableCell>
-                  <TableCell>
-                    {volunteer.skills.length > 0 ? volunteer.skills.join(', ') : (
-                      <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
-                    )}
+                  <TableCell style={toneText.neutral}>{volunteer.organization ?? '—'}</TableCell>
+                  <TableCell style={toneText.neutral}>
+                    {volunteer.skills.length > 0 ? volunteer.skills.join(', ') : '—'}
                   </TableCell>
-                  <TableCell>{volunteer.phone_number ?? '—'}</TableCell>
                   <TableCell>
-                    <Badge variant={volunteer.is_verified ? 'success' : 'warning'}>
+                    {volunteer.phone_number ?? <span style={toneText.neutral}>Not provided</span>}
+                  </TableCell>
+                  <TableCell>
+                    <Badge tone={volunteer.is_verified ? 'success' : 'warning'} dot>
                       {volunteer.is_verified ? 'Approved' : 'Pending'}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={volunteer.is_available ? 'success' : 'default'}>
+                    <Badge tone={volunteer.is_available ? 'success' : 'neutral'} dot>
                       {volunteer.is_available ? 'On duty' : 'Off duty'}
                     </Badge>
                   </TableCell>
                   <TableCell>
+                    {/* The last column is the server's P-05 verdict. It is spelled
+                        out as a reason rather than a bare "No", because the
+                        assign dialog needs the same distinction and the two must
+                        not disagree. */}
                     {volunteer.can_assign ? (
-                      <Badge variant="success">Yes</Badge>
-                    ) : volunteer.has_active_assignment ? (
-                      <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>
-                        On a job
-                      </span>
-                    ) : !volunteer.is_verified ? (
-                      <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>
-                        Not approved
-                      </span>
+                      <Badge tone="success" dot>
+                        Ready
+                      </Badge>
                     ) : (
-                      <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.8125rem' }}>
-                        Off duty
-                      </span>
+                      <span style={toneText.neutral}>{availabilityReason(volunteer)}</span>
                     )}
                   </TableCell>
                 </TableRow>
               ))}
+
               {volunteers.length === 0 && (
                 <TableRow>
-                  <TableCell>
-                    <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
-                      No volunteers found.
-                    </div>
+                  <TableCell colSpan={7}>
+                    <EmptyState
+                      title="No volunteer matches this filter"
+                      description={
+                        appliedSearch
+                          ? `Nothing matched “${appliedSearch}”.`
+                          : availability === 'true'
+                            ? 'No volunteer is currently on duty and free.'
+                            : 'No volunteer is registered yet.'
+                      }
+                      action={
+                        appliedSearch || availability !== 'all' ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSearch('');
+                              setAppliedSearch('');
+                              setAvailability('all');
+                            }}
+                          >
+                            Clear filters
+                          </Button>
+                        ) : undefined
+                      }
+                    />
                   </TableCell>
                 </TableRow>
               )}
@@ -176,27 +226,3 @@ export const Volunteers: React.FC = () => {
     </div>
   );
 };
-
-const ButtonFilter: React.FC<{ active: boolean; label: string; onClick: () => void }> = ({
-  active,
-  label,
-  onClick,
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    style={{
-      padding: '0.375rem 0.75rem',
-      borderRadius: '0.375rem',
-      fontSize: '0.875rem',
-      fontFamily: 'inherit',
-      fontWeight: 500,
-      cursor: 'pointer',
-      backgroundColor: active ? 'var(--color-primary-navy)' : 'transparent',
-      color: active ? '#FFFFFF' : 'var(--color-text-secondary)',
-      border: '1px solid var(--color-border)',
-    }}
-  >
-    {label}
-  </button>
-);

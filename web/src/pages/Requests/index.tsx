@@ -1,30 +1,36 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/Table';
+import { Alert } from '../../components/ui/Alert';
+import { AgeCell } from '../../components/ui/AgeCell';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Section } from '../../components/ui/Section';
+import { FilterBar, SearchInput } from '../../components/ui/SearchInput';
+import { SkeletonTable } from '../../components/ui/Skeleton';
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/Table';
 import { AssignVolunteerDialog } from '../../components/AssignVolunteerDialog';
 import { fetchPoliceRequests } from '../../api/client';
-import { priorityLabel, type PoliceRequest, type RequestStatus } from '../../api/types';
-import { Search, UserCheck } from 'lucide-react';
-
-const statusBadgeVariant: Record<RequestStatus, 'success' | 'warning' | 'error' | 'default'> = {
-  COMPLETED: 'success',
-  ACCEPTED: 'default',
-  IN_PROGRESS: 'default',
-  PENDING: 'warning',
-  MATCHING: 'warning',
-  DISPATCHED: 'warning',
-  CANCELLED: 'error',
-  UNASSIGNED: 'error',
-};
-
-const categoryLabels: Record<string, string> = {
-  grocery_assistance: 'Grocery Assistance',
-  medical_assistance: 'Medical Assistance',
-  transport_assistance: 'Transport Assistance',
-};
+import type { PoliceRequest, RequestStatus } from '../../api/types';
+import {
+  categoryLabel,
+  priorityLabel,
+  REQUEST_STATUSES,
+  shortId,
+  statusLabel,
+} from '../../lib/format';
+import { priorityTone, requestStatusTone, toneText } from '../../lib/tone';
+import { controlInteractive, pageStack } from '../../lib/styles';
+import { UserCheck } from 'lucide-react';
 
 /** A request police may still hand to a named volunteer (BR-04, ASSIGNABLE_STATUSES). */
 const ASSIGNABLE: RequestStatus[] = ['PENDING', 'MATCHING', 'DISPATCHED'];
@@ -32,23 +38,14 @@ const ASSIGNABLE: RequestStatus[] = ['PENDING', 'MATCHING', 'DISPATCHED'];
 const canAssign = (req: PoliceRequest): boolean =>
   ASSIGNABLE.includes(req.status) && req.assigned_volunteer === null;
 
+/**
+ * An empty dispatch batch on an assignable request means dispatch found nobody in
+ * range and the senior is waiting on an alert nobody received. That is a
+ * different failure from "waiting", and it gets its own word on the board.
+ */
 const notifiedCount = (req: PoliceRequest): number => req.dispatch_batch?.length ?? 0;
 
 const PAGE_SIZE = 50;
-
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-
-const selectStyle: React.CSSProperties = {
-  padding: '0.5rem 0.75rem',
-  borderRadius: '0.375rem',
-  border: '1px solid var(--color-border)',
-  fontFamily: 'inherit',
-  fontSize: '0.875rem',
-  background: 'var(--color-surface-white)',
-  color: 'var(--color-text-primary)',
-  outline: 'none',
-};
 
 export const Requests: React.FC = () => {
   const navigate = useNavigate();
@@ -57,6 +54,7 @@ export const Requests: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
   const [statusFilter, setStatusFilter] = useState<'All' | RequestStatus>('All');
   const [priorityFilter, setPriorityFilter] = useState<'All' | 'URGENT' | 'NORMAL'>('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -81,9 +79,11 @@ export const Requests: React.FC = () => {
         });
         setRequests((prev) => (reset ? result.requests : [...prev, ...result.requests]));
         setCursor(result.next_cursor);
+        setFetchedAt(new Date());
       } catch (err) {
+        // Keeps the loaded rows on a failed "load more": the officer still has
+        // page one, and clearing it would throw away work they already read.
         setError(err instanceof Error ? err.message : 'Failed to load requests');
-        if (reset) setRequests([]);
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -96,19 +96,6 @@ export const Requests: React.FC = () => {
     setCursor(null);
     void load(true);
   }, [load]);
-
-  const statuses: ('All' | RequestStatus)[] = [
-    'All',
-    'PENDING',
-    'MATCHING',
-    'DISPATCHED',
-    'ACCEPTED',
-    'IN_PROGRESS',
-    'COMPLETED',
-    'CANCELLED',
-    'UNASSIGNED',
-  ];
-  const priorities: ('All' | 'URGENT' | 'NORMAL')[] = ['All', 'URGENT', 'NORMAL'];
 
   /**
    * `GET /police/requests` takes no search term, so this narrows the pages
@@ -145,207 +132,143 @@ export const Requests: React.FC = () => {
       ),
     );
     setNotice(
-      `${volunteer.full_name ?? 'Volunteer'} was assigned to request ${request.id.slice(0, 8)} and has been asked to accept.`,
+      `${volunteer.full_name ?? 'Volunteer'} was assigned to request ${shortId(request.id)} and has been asked to accept.`,
     );
   };
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <div>
-        <h1 style={{ fontSize: '1.875rem', fontWeight: 700, margin: '0 0 0.5rem 0' }}>Requests</h1>
-        <p style={{ color: 'var(--color-text-secondary)', margin: 0 }}>
-          Help requests from seniors, newest first. Open a row to see the detail, the timeline and
-          the assign action.
-        </p>
-      </div>
+  const hasFilters = statusFilter !== 'All' || priorityFilter !== 'All' || searchQuery.trim() !== '';
 
+  return (
+    <div style={pageStack}>
       {error && (
-        <div
-          role="alert"
-          style={{
-            padding: '0.75rem 1rem',
-            borderRadius: '0.375rem',
-            backgroundColor: 'var(--color-status-error-bg)',
-            color: 'var(--color-status-error)',
-            fontSize: '0.875rem',
-          }}
-        >
+        <Alert onRetry={() => void load(true)} hint="Any rows already loaded are still shown below.">
           {error}
-        </div>
+        </Alert>
       )}
 
       {notice && (
-        <div
-          role="status"
-          style={{
-            padding: '0.75rem 1rem',
-            borderRadius: '0.375rem',
-            backgroundColor: 'var(--color-status-success-bg)',
-            color: 'var(--color-text-primary)',
-            fontSize: '0.875rem',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: '1rem',
-          }}
-        >
-          <span>{notice}</span>
-          <button
-            type="button"
-            onClick={() => setNotice(null)}
-            aria-label="Dismiss"
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              fontSize: '1rem',
-              lineHeight: 1,
-              color: 'inherit',
-            }}
-          >
-            ×
-          </button>
-        </div>
+        <Alert tone="success" onDismiss={() => setNotice(null)}>
+          {notice}
+        </Alert>
       )}
 
-      <Card>
-        <div
-          style={{
-            padding: '1.25rem 1.5rem',
-            borderBottom: '1px solid var(--color-border)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: '1rem',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <select
-              aria-label="Status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'All' | RequestStatus)}
-              style={selectStyle}
-            >
-              {statuses.map((s) => (
-                <option key={s} value={s}>
-                  {s === 'All' ? 'All statuses' : s.replace(/_/g, ' ')}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Priority"
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value as 'All' | 'URGENT' | 'NORMAL')}
-              style={selectStyle}
-            >
-              {priorities.map((p) => (
-                <option key={p} value={p}>
-                  {p === 'All' ? 'All priorities' : p === 'URGENT' ? 'Urgent' : 'Normal'}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div style={{ position: 'relative', width: '260px', maxWidth: '100%' }}>
-            <Search
-              size={16}
-              style={{
-                position: 'absolute',
-                left: '0.75rem',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--color-text-secondary)',
-                pointerEvents: 'none',
-              }}
-            />
-            <input
-              type="text"
-              aria-label="Search loaded rows"
-              placeholder="Search loaded rows…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.5rem 0.5rem 0.5rem 2.25rem',
-                borderRadius: '0.375rem',
-                border: '1px solid var(--color-border)',
-                outline: 'none',
-                fontFamily: 'inherit',
-                fontSize: '0.875rem',
-                background: 'var(--color-surface-white)',
-                color: 'var(--color-text-primary)',
-              }}
-            />
-          </div>
+      <Card flush>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--color-rule)' }}>
+          <Section
+            title="All requests"
+            description="Every request ever raised, newest first. Open a row for the detail, the timeline and the assign action."
+            unbordered
+            actions={
+              <span
+                className="tnum"
+                style={{ fontSize: 'var(--text-meta)', color: 'var(--color-ink-muted)', whiteSpace: 'nowrap' }}
+              >
+                {filtered.length} of {requests.length} loaded
+              </span>
+            }
+          >
+            <FilterBar>
+              <SearchInput
+                value={searchQuery}
+                onChange={setSearchQuery}
+                label="Search loaded rows"
+                placeholder="Search loaded rows…"
+                width="220px"
+              />
+              <select
+                aria-label="Status"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as 'All' | RequestStatus)}
+                style={controlInteractive}
+              >
+                <option value="All">All statuses</option>
+                {REQUEST_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {statusLabel(status)}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Priority"
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value as 'All' | 'URGENT' | 'NORMAL')}
+                style={controlInteractive}
+              >
+                <option value="All">All priorities</option>
+                <option value="URGENT">Urgent</option>
+                <option value="NORMAL">Normal</option>
+              </select>
+            </FilterBar>
+          </Section>
         </div>
 
-        {loading ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
-            Loading requests…
-          </div>
+        {loading && requests.length === 0 ? (
+          <SkeletonTable columns={8} rows={10} />
         ) : (
           <>
-            <Table>
+            <Table density="dense" stickyHeader>
+              <TableCaption>
+                Assistance requests, newest first. Each row links to the request detail page.
+              </TableCaption>
               <TableHead>
                 <TableRow>
-                  <TableHeader>ID</TableHeader>
-                  <TableHeader>Photo</TableHeader>
+                  <TableHeader width="5rem">Waiting</TableHeader>
+                  <TableHeader width="4.5rem">Photo</TableHeader>
                   <TableHeader>Senior</TableHeader>
                   <TableHeader>Category</TableHeader>
                   <TableHeader>Priority</TableHeader>
                   <TableHeader>Status</TableHeader>
                   <TableHeader>Volunteer</TableHeader>
-                  <TableHeader>Created</TableHeader>
-                  <TableHeader>Actions</TableHeader>
+                  <TableHeader align="right">Ref</TableHeader>
+                  <TableHeader align="right" width="6rem">
+                    Actions
+                  </TableHeader>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filtered.map((req) => (
-                  <TableRow
-                    key={req.id}
-                    onClick={() => navigate(`/requests/${req.id}`)}
-                    style={{ cursor: 'pointer' }}
-                  >
+                  <TableRow key={req.id} onClick={() => navigate(`/requests/${req.id}`)}>
                     <TableCell>
-                      <span style={{ fontWeight: 500, color: 'var(--color-text-secondary)' }}>
-                        {req.id.slice(0, 8)}
-                      </span>
+                      <AgeCell createdAt={req.created_at} status={req.status} now={fetchedAt!.getTime()} />
                     </TableCell>
                     <TableCell>
                       {req.image_url ? (
                         <img
                           src={req.image_url}
-                          alt={`Photo attached to request ${req.id.slice(0, 8)}`}
+                          alt={`Photo attached to request ${shortId(req.id)}`}
                           loading="lazy"
                           style={{
-                            width: '48px',
-                            height: '48px',
+                            width: '44px',
+                            height: '44px',
                             objectFit: 'cover',
-                            borderRadius: '0.375rem',
-                            border: '1px solid var(--color-border)',
-                            background: 'var(--color-surface-white)',
+                            borderRadius: 'var(--radius-control)',
+                            background: 'var(--color-sunken)',
                             display: 'block',
                           }}
                         />
                       ) : (
-                        <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
+                        <span style={{ ...toneText.neutral }} aria-label="No photo attached">—</span>
                       )}
                     </TableCell>
                     <TableCell>
-                      <span style={{ fontWeight: 500 }}>
+                      {/* The focusable path to the same row. */}
+                      <Link
+                        to={`/requests/${req.id}`}
+                        style={{ fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                      >
                         {req.senior.full_name ?? req.senior.email ?? 'Unknown'}
-                      </span>
+                      </Link>
                     </TableCell>
-                    <TableCell>{categoryLabels[req.category] ?? req.category.replace(/_/g, ' ')}</TableCell>
+                    <TableCell style={toneText.neutral}>{categoryLabel(req.category)}</TableCell>
                     <TableCell>
-                      <Badge variant={req.priority === 'urgent' ? 'error' : 'default'}>
+                      <Badge tone={priorityTone(req.priority)} state={req.priority === 'urgent'}>
                         {priorityLabel(req.priority)}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={statusBadgeVariant[req.status]}>{req.status}</Badge>
+                      <Badge tone={requestStatusTone(req.status)} state dot>
+                        {statusLabel(req.status)}
+                      </Badge>
                       {/*
                         An empty dispatch batch while the request is still
                         unassigned means dispatch found nobody in range and the
@@ -355,36 +278,32 @@ export const Requests: React.FC = () => {
                       {notifiedCount(req) === 0 && canAssign(req) && (
                         <div
                           title="Dispatch found no volunteer in range. Nobody was notified — assign one by hand."
-                          style={{
-                            marginTop: '0.25rem',
-                            fontSize: '0.75rem',
-                            color: 'var(--color-status-error)',
-                          }}
+                          style={{ marginTop: '0.25rem', fontSize: 'var(--text-label)', ...toneText.error }}
                         >
                           Nobody notified
                         </div>
                       )}
                     </TableCell>
-                    <TableCell>
-                      {req.assigned_volunteer?.full_name ?? (
-                        <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
-                      )}
+                    <TableCell style={toneText.neutral}>
+                      {req.assigned_volunteer?.full_name ?? <span aria-label="Unassigned">—</span>}
                     </TableCell>
-                    <TableCell
-                      style={{ color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}
-                    >
-                      {formatDate(req.created_at)}
+                    <TableCell align="right">
+                      <span className="mono" style={toneText.neutral}>
+                        {shortId(req.id)}
+                      </span>
                     </TableCell>
-                    <TableCell onClick={(e) => e.stopPropagation()}>
+                    <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                       {canAssign(req) ? (
-                        <Button size="sm" variant="outline" onClick={() => setAssignTarget(req)}>
-                          <UserCheck size={14} style={{ marginRight: '0.375rem' }} />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setAssignTarget(req)}
+                          icon={<UserCheck size={14} />}
+                        >
                           Assign
                         </Button>
                       ) : (
-                        <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-                          —
-                        </span>
+                        <span style={{ ...toneText.neutral, fontSize: 'var(--text-body)' }}>—</span>
                       )}
                     </TableCell>
                   </TableRow>
@@ -392,18 +311,36 @@ export const Requests: React.FC = () => {
 
                 {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell>
-                      <div
-                        style={{
-                          padding: '2rem',
-                          textAlign: 'center',
-                          color: 'var(--color-text-secondary)',
-                        }}
-                      >
-                        {requests.length === 0
-                          ? 'No requests match these filters.'
-                          : 'No loaded row matches the search.'}
-                      </div>
+                    <TableCell colSpan={9}>
+                      <EmptyState
+                        title={
+                          requests.length === 0
+                            ? 'No requests match these filters'
+                            : 'No loaded row matches the search'
+                        }
+                        description={
+                          requests.length === 0
+                            ? 'Nothing has been raised under this status and priority combination.'
+                            : `${requests.length} request${
+                                requests.length === 1 ? '' : 's'
+                              } loaded, none matching the current search. Search only covers loaded rows.`
+                        }
+                        action={
+                          hasFilters ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setStatusFilter('All');
+                                setPriorityFilter('All');
+                                setSearchQuery('');
+                              }}
+                            >
+                              Clear filters
+                            </Button>
+                          ) : undefined
+                        }
+                      />
                     </TableCell>
                   </TableRow>
                 )}
@@ -413,9 +350,10 @@ export const Requests: React.FC = () => {
             {cursor && (
               <div
                 style={{
-                  padding: '1rem',
-                  textAlign: 'center',
-                  borderTop: '1px solid var(--color-border)',
+                  padding: '0.875rem',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  borderTop: '1px solid var(--color-rule)',
                 }}
               >
                 <Button

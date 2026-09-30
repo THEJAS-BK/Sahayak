@@ -1,9 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
+import { Button } from './ui/Button';
+import { Modal } from './ui/Modal';
+import { Alert } from './ui/Alert';
+import { EmptyState } from './ui/EmptyState';
+import { Skeleton } from './ui/Skeleton';
+import { SearchInput } from './ui/SearchInput';
 import { assignRequestToVolunteer, fetchAssignableVolunteers } from '../api/client';
 import type { AssignableVolunteer, PoliceRequest } from '../api/types';
-import { Search, UserCheck, X } from 'lucide-react';
+import { UserCheck } from 'lucide-react';
+import { shortId } from '../lib/format';
 
 interface Props {
   request: PoliceRequest;
@@ -36,6 +42,7 @@ export const AssignVolunteerDialog: React.FC<Props> = ({ request, onClose, onAss
   }, [search]);
 
   useEffect(() => {
+    // Debounced so typing a name is not one request per keystroke.
     const timer = setTimeout(load, search ? 300 : 0);
     return () => clearTimeout(timer);
   }, [load, search]);
@@ -63,168 +70,135 @@ export const AssignVolunteerDialog: React.FC<Props> = ({ request, onClose, onAss
     return 'Not assignable';
   };
 
+  const allBlocked = !loading && volunteers.length > 0 && volunteers.every((v) => !v.can_assign);
+
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Assign a volunteer"
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(15,23,42,0.45)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '1.5rem',
-        zIndex: 50,
-      }}
+    <Modal
+      title="Assign a volunteer"
+      onClose={onClose}
+      width={580}
+      footer={<Button variant="secondary" onClick={onClose}>Cancel</Button>}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
+      <p
         style={{
-          backgroundColor: 'var(--color-surface-white)',
-          borderRadius: '0.5rem',
-          width: '100%',
-          maxWidth: '560px',
-          maxHeight: '80vh',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: '0 20px 45px rgba(15,23,42,0.25)',
+          margin: '0 0 1rem',
+          fontSize: 'var(--text-meta)',
+          color: 'var(--color-ink-muted)',
+          lineHeight: 1.5,
         }}
       >
-        <div
-          style={{
-            padding: '1.25rem 1.5rem',
-            borderBottom: '1px solid var(--color-border)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            gap: '1rem',
-          }}
-        >
-          <div>
-            <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>Assign a volunteer</h2>
-            <p style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
-              Request {request.id.slice(0, 8)} · the volunteer is asked, not committed, and still has to accept.
-              Listed by readiness, not distance — live volunteer positions are not available yet.
-            </p>
-          </div>
-          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close">
-            <X size={16} />
-          </Button>
-        </div>
+        Request <span className="mono">{shortId(request.id)}</span> for{' '}
+        <strong style={{ color: 'var(--color-ink)' }}>
+          {request.senior.full_name ?? request.senior.email ?? 'this senior'}
+        </strong>
+        . The volunteer is asked, not committed, and still has to accept. Listed by readiness, not
+        distance — live volunteer positions are not available yet.
+      </p>
 
-        <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--color-border)' }}>
-          <div style={{ position: 'relative' }}>
-            <Search
-              size={16}
-              style={{
-                position: 'absolute',
-                left: '0.75rem',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--color-text-secondary)',
-              }}
-            />
-            <input
-              type="text"
-              placeholder="Search by name, email or organisation..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.5rem 0.75rem 0.5rem 2.25rem',
-                borderRadius: '0.375rem',
-                border: '1px solid var(--color-border)',
-                outline: 'none',
-                fontFamily: 'inherit',
-                fontSize: '0.875rem',
-              }}
-            />
-          </div>
-        </div>
+      <SearchInput
+        value={search}
+        onChange={setSearch}
+        label="Search volunteers"
+        placeholder="Search by name, email or organisation…"
+        width="100%"
+      />
 
-        <div style={{ padding: '0.5rem 1.5rem 1rem', overflowY: 'auto', flex: 1 }}>
-          {error && (
+      {error && (
+        <div style={{ marginTop: '1rem' }}>
+          <Alert onRetry={load}>{error}</Alert>
+        </div>
+      )}
+
+      {loading && (
+        <div role="status" aria-live="polite" style={{ marginTop: '1rem' }}>
+          <span className="sr-only">Loading volunteers…</span>
+          {Array.from({ length: 4 }, (_, i) => (
             <div
+              key={i}
               style={{
-                padding: '0.75rem 1rem',
-                borderRadius: '0.375rem',
-                backgroundColor: 'var(--color-status-error-bg)',
-                color: 'var(--color-status-error)',
-                fontSize: '0.875rem',
-                margin: '0.5rem 0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '1rem',
+                padding: '0.875rem 0',
+                borderBottom: '1px solid var(--color-rule)',
               }}
             >
-              {error}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                <Skeleton width="45%" />
+                <Skeleton width="65%" height="0.75rem" />
+              </div>
+              <Skeleton width="5rem" height="1.875rem" />
             </div>
-          )}
+          ))}
+        </div>
+      )}
 
-          {loading && <div style={{ padding: '1.5rem 0', color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>Loading volunteers…</div>}
+      {!loading && volunteers.length === 0 && (
+        <EmptyState
+          title="No volunteer matches that search"
+          description="P-04 orders this list by readiness, so an empty result means nobody in the system is currently eligible for this request."
+        />
+      )}
 
-          {!loading && volunteers.length === 0 && (
-            <div style={{ padding: '1.5rem 0', color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-              No volunteers match that search.
+      {!loading && allBlocked && (
+        <div style={{ marginTop: '0.75rem' }}>
+          <Alert tone="warning" role="status">
+            No volunteer is currently eligible for this request. Every one is either unverified, off
+            duty, or already on another job.
+          </Alert>
+        </div>
+      )}
+
+      {!loading &&
+        volunteers.map((volunteer) => {
+          const blocked = blockedReason(volunteer);
+          return (
+            <div
+              key={volunteer.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '1rem',
+                padding: '0.875rem 0',
+                borderBottom: '1px solid var(--color-rule)',
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: 0 }}>
+                <span style={{ fontWeight: 600 }}>{volunteer.full_name ?? volunteer.email}</span>
+                <span style={{ fontSize: 'var(--text-label)', color: 'var(--color-ink-muted)' }}>
+                  {[volunteer.phone_number, volunteer.organization].filter(Boolean).join(' · ') ||
+                    volunteer.email}
+                </span>
+                {blocked ? (
+                  <span style={{ fontSize: 'var(--text-label)', color: 'var(--color-ink-muted)' }}>
+                    {blocked}
+                  </span>
+                ) : (
+                  <Badge tone="success" dot>
+                    Ready
+                  </Badge>
+                )}
+              </div>
+              {/* The button is not merely disabled for a blocked volunteer: a
+                  disabled control gives no reason, and the reason is the one
+                  thing that tells an officer whether to wait or to escalate. */}
+              <Button
+                size="sm"
+                disabled={Boolean(blocked) || assigningId !== null}
+                onClick={() => assign(volunteer)}
+                icon={<UserCheck size={14} />}
+                aria-label={
+                  blocked
+                    ? `Cannot assign ${volunteer.full_name ?? volunteer.email}: ${blocked}`
+                    : `Assign ${volunteer.full_name ?? volunteer.email}`
+                }
+              >
+                {assigningId === volunteer.id ? 'Assigning…' : 'Assign'}
+              </Button>
             </div>
-          )}
-
-          {!loading &&
-            volunteers.map((volunteer) => {
-              const blocked = blockedReason(volunteer);
-              return (
-                <div
-                  key={volunteer.id}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: '1rem',
-                    padding: '0.875rem 0',
-                    borderBottom: '1px solid var(--color-border)',
-                  }}
-                >
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: 0 }}>
-                    <span style={{ fontWeight: 600, fontSize: '0.9375rem' }}>
-                      {volunteer.full_name ?? volunteer.email}
-                    </span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                      {[volunteer.phone_number, volunteer.organization].filter(Boolean).join(' · ') || volunteer.email}
-                    </span>
-                    <span style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                      {blocked ? (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>{blocked}</span>
-                      ) : (
-                        <Badge variant="success">Ready</Badge>
-                      )}
-                    </span>
-                  </div>
-                  <Button
-                    size="sm"
-                    disabled={Boolean(blocked) || assigningId !== null}
-                    onClick={() => assign(volunteer)}
-                  >
-                    <UserCheck size={14} style={{ marginRight: '0.375rem' }} />
-                    {assigningId === volunteer.id ? 'Assigning…' : 'Assign'}
-                  </Button>
-                </div>
-              );
-            })}
-        </div>
-
-        <div
-          style={{
-            padding: '0.875rem 1.5rem',
-            borderTop: '1px solid var(--color-border)',
-            display: 'flex',
-            justifyContent: 'flex-end',
-          }}
-        >
-          <Button variant="secondary" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
-        </div>
-      </div>
-    </div>
+          );
+        })}
+    </Modal>
   );
 };

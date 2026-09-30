@@ -1,29 +1,24 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import { Alert } from '../../components/ui/Alert';
+import { Section } from '../../components/ui/Section';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { AssignVolunteerDialog } from '../../components/AssignVolunteerDialog';
 import { fetchRequestDetail } from '../../api/client';
-import { priorityLabel, type PoliceRequest, type RequestStatus } from '../../api/types';
+import type { PoliceRequest, RequestStatus } from '../../api/types';
 import { ArrowLeft, UserCheck } from 'lucide-react';
-
-const statusBadgeVariant: Record<RequestStatus, 'success' | 'warning' | 'error' | 'default'> = {
-  COMPLETED: 'success',
-  ACCEPTED: 'default',
-  IN_PROGRESS: 'default',
-  PENDING: 'warning',
-  MATCHING: 'warning',
-  DISPATCHED: 'warning',
-  CANCELLED: 'error',
-  UNASSIGNED: 'error',
-};
-
-const categoryLabels: Record<string, string> = {
-  grocery_assistance: 'Grocery Assistance',
-  medical_assistance: 'Medical Assistance',
-  transport_assistance: 'Transport Assistance',
-};
+import {
+  categoryLabel,
+  formatDateTime,
+  priorityLabel,
+  shortId,
+  statusLabel,
+} from '../../lib/format';
+import { priorityTone, requestStatusTone, toneText } from '../../lib/tone';
+import { pageStack } from '../../lib/styles';
 
 const detailLabels: Record<string, string> = {
   items: 'Items',
@@ -44,75 +39,133 @@ function detailEntries(details: unknown): Array<[string, string]> {
   ]);
 }
 
-const formatDate = (iso: string) => new Date(iso).toLocaleString(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
-
-
 /** A request police may still hand to a named volunteer (BR-04, ASSIGNABLE_STATUSES). */
 const ASSIGNABLE: RequestStatus[] = ['PENDING', 'MATCHING', 'DISPATCHED'];
 
 const canAssign = (request: PoliceRequest): boolean =>
   ASSIGNABLE.includes(request.status) && request.assigned_volunteer === null;
 
+/** One labelled value in a detail card. */
+const DetailRow: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline' }}>
+    <span
+      style={{
+        fontSize: 'var(--text-meta)',
+        color: 'var(--color-ink-muted)',
+        minWidth: '7.5rem',
+        flexShrink: 0,
+      }}
+    >
+      {label}
+    </span>
+    <span style={{ fontSize: 'var(--text-body)', wordBreak: 'break-word' }}>{children}</span>
+  </div>
+);
+
 export const RequestDetails: React.FC = () => {
   const { requestId } = useParams<{ requestId: string }>();
-  const navigate = useNavigate();
   const [request, setRequest] = useState<PoliceRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!requestId) return;
     setLoading(true);
     setError(null);
-    fetchRequestDetail(requestId)
-      .then((result) => setRequest(result.request))
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : 'Failed to load request');
-        setRequest(null);
-      })
-      .finally(() => setLoading(false));
+    try {
+      const result = await fetchRequestDetail(requestId);
+      setRequest(result.request);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load the request');
+      setRequest(null);
+    } finally {
+      setLoading(false);
+    }
   }, [requestId]);
 
-  if (loading) {
-    return <div style={{ color: 'var(--color-text-secondary)' }}>Loading request…</div>;
-  }
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  if (error || !request) {
+  const backLink = (
+    <Link
+      to="/requests"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.5rem',
+        fontSize: 'var(--text-meta)',
+        color: 'var(--color-ink-muted)',
+        alignSelf: 'flex-start',
+      }}
+    >
+      <ArrowLeft size={16} /> Back to Requests
+    </Link>
+  );
+
+  if (loading) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: 'flex-start' }}>
-        <Link to="/requests" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
-          <ArrowLeft size={16} /> Back to Requests
-        </Link>
+      <div style={pageStack}>
+        {backLink}
         <Card>
-          <div style={{ padding: '2rem', color: 'var(--color-status-error)' }}>{error ?? 'Request not found.'}</div>
+          <div role="status" aria-live="polite" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <span className="sr-only">Loading the request…</span>
+            <Skeleton width="40%" height="1.25rem" />
+            <Skeleton width="70%" />
+            <Skeleton width="55%" />
+          </div>
         </Card>
       </div>
     );
   }
+
+  // A failed load used to be a dead end: the error text with no way back to the
+  // list and no way to retry.
+  if (error || !request) {
+    return (
+      <div style={pageStack}>
+        {backLink}
+        <Alert onRetry={() => void load()}>{error ?? 'Request not found.'}</Alert>
+      </div>
+    );
+  }
+
   const extras = detailEntries(request.details);
   const senior = request.senior;
   const volunteer = request.assigned_volunteer;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <Button variant="ghost" size="sm" onClick={() => navigate('/requests')} style={{ alignSelf: 'flex-start', fontWeight: 500 }}>
-        <ArrowLeft size={16} style={{ marginRight: '0.5rem' }} />
-        Back to Requests
-      </Button>
+    <div style={pageStack}>
+      {backLink}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-        <h1 style={{ fontSize: '1.875rem', fontWeight: 700, margin: 0 }}>Request {request.id}</h1>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <Badge variant={request.priority === 'urgent' ? 'error' : 'default'}>{priorityLabel(request.priority)}</Badge>
-          <Badge variant={statusBadgeVariant[request.status]}>{request.status}</Badge>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '1rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.625rem', minWidth: 0 }}>
+          <h1 style={{ fontSize: 'var(--text-title)', fontWeight: 700, margin: 0 }}>
+            {senior.full_name ?? 'Help request'}
+          </h1>
+          <span className="mono" style={{ ...toneText.neutral, fontSize: 'var(--text-meta)' }}>
+            {shortId(request.id)}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <Badge tone={requestStatusTone(request.status)} state dot>
+            {statusLabel(request.status)}
+          </Badge>
+          <Badge tone={priorityTone(request.priority)} state={request.priority === 'urgent'}>
+            {priorityLabel(request.priority)}
+          </Badge>
           {canAssign(request) && (
-            <Button size="sm" onClick={() => setAssignOpen(true)}>
-              <UserCheck size={14} style={{ marginRight: '0.375rem' }} />
+            <Button size="sm" icon={<UserCheck size={14} />} onClick={() => setAssignOpen(true)}>
               Assign volunteer
             </Button>
           )}
@@ -120,129 +173,142 @@ export const RequestDetails: React.FC = () => {
       </div>
 
       {notice && (
-        <div
-          style={{
-            padding: '0.75rem 1rem',
-            borderRadius: '0.375rem',
-            backgroundColor: 'var(--color-status-success-bg)',
-            color: 'var(--color-text-primary)',
-            fontSize: '0.875rem',
-          }}
-        >
+        <Alert tone="success" onDismiss={() => setNotice(null)}>
           {notice}
-        </div>
+        </Alert>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+      <div
+        style={{
+          display: 'grid',
+          // Collapses on a narrow pane; a fixed two-column grid used to squeeze
+          // the description into a two-word-per-line column.
+          gridTemplateColumns: 'repeat(auto-fit, minmax(19rem, 1fr))',
+          gap: '1.5rem',
+        }}
+      >
         <Card>
-          <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--color-border)' }}>
-            <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>Senior</h2>
-          </div>
-          <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <span style={{ fontWeight: 600, fontSize: '1rem' }}>{senior.full_name ?? 'Name not recorded'}</span>
-            {senior.phone_number && (
-              <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>{senior.phone_number}</span>
-            )}
-            {senior.email && (
-              <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>{senior.email}</span>
-            )}
-          </div>
+          <Section title="Senior" unbordered>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <DetailRow label="Name">
+                <Link to={`/seniors/${senior.id}`} style={{ fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: '2px' }}>
+                  {senior.full_name ?? 'Name not recorded'}
+                </Link>
+              </DetailRow>
+              <DetailRow label="Phone">
+                {senior.phone_number ?? <span style={toneText.neutral}>Not provided</span>}
+              </DetailRow>
+              <DetailRow label="Email">
+                {senior.email ?? <span style={toneText.neutral}>Not provided</span>}
+              </DetailRow>
+            </div>
+          </Section>
         </Card>
 
         <Card>
-          <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--color-border)' }}>
-            <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>Request</h2>
-          </div>
-          <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.875rem' }}>
-            <div><span style={{ color: 'var(--color-text-secondary)' }}>Category: </span>{categoryLabels[request.category] ?? request.category}</div>
-            <div><span style={{ color: 'var(--color-text-secondary)' }}>Description: </span>{request.description}</div>
-            {extras.map(([label, value]) => (
-              <div key={label}><span style={{ color: 'var(--color-text-secondary)' }}>{label}: </span>{value}</div>
-            ))}
-            <div><span style={{ color: 'var(--color-text-secondary)' }}>Source: </span>{request.source}</div>
-            <div><span style={{ color: 'var(--color-text-secondary)' }}>Created: </span>{formatDate(request.created_at)}</div>
-            {request.latitude != null && request.longitude != null && (
-              <div><span style={{ color: 'var(--color-text-secondary)' }}>Location: </span>{request.latitude.toFixed(4)}, {request.longitude.toFixed(4)}</div>
-            )}
-          </div>
+          <Section title="Request" unbordered>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+              <DetailRow label="Category">{categoryLabel(request.category)}</DetailRow>
+              <DetailRow label="Description">{request.description}</DetailRow>
+              {extras.map(([label, value]) => (
+                <DetailRow key={label} label={label}>
+                  {value}
+                </DetailRow>
+              ))}
+              <DetailRow label="Source">{request.source}</DetailRow>
+              <DetailRow label="Raised">{formatDateTime(request.created_at)}</DetailRow>
+              <DetailRow label="Location">
+                {request.latitude != null && request.longitude != null ? (
+                  // Precise to four decimals — enough for an officer to find the
+                  // street, not enough to be a shareable coordinate.
+                  <span className="mono">
+                    {request.latitude.toFixed(4)}, {request.longitude.toFixed(4)}
+                  </span>
+                ) : (
+                  <span style={toneText.neutral}>Not recorded</span>
+                )}
+              </DetailRow>
+            </div>
+          </Section>
         </Card>
       </div>
 
       <Card>
-        <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--color-border)' }}>
-          <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>Photo</h2>
-        </div>
-        <div style={{ padding: '1.5rem' }}>
+        <Section title="Photo" unbordered>
           {request.image_url ? (
-            <a href={request.image_url} target="_blank" rel="noreferrer" title="Open full size">
+            <a
+              href={request.image_url}
+              target="_blank"
+              rel="noreferrer"
+              style={{ display: 'inline-block', color: 'var(--color-ink-muted)', fontSize: 'var(--text-label)' }}
+            >
               <img
                 src={request.image_url}
-                alt={`Photo the senior attached to request ${request.id}`}
+                alt={`Photo the senior attached to request ${shortId(request.id)}`}
                 style={{
                   width: '100%',
                   maxWidth: '480px',
-                  borderRadius: '0.5rem',
-                  border: '1px solid var(--color-border)',
+                  borderRadius: 'var(--radius-control)',
                   display: 'block',
                   cursor: 'zoom-in',
                 }}
               />
-              <span style={{ display: 'inline-block', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+              <span style={{ display: 'inline-block', marginTop: '0.5rem' }}>
                 Attached by the senior · select to open full size
               </span>
             </a>
           ) : (
-            <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-              The senior did not attach a photo to this request.
-            </span>
+            <span style={toneText.neutral}>The senior did not attach a photo to this request.</span>
           )}
-        </div>
+        </Section>
       </Card>
 
       <Card>
-        <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--color-border)' }}>
-          <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>Volunteer</h2>
-        </div>
-        <div style={{ padding: '1.5rem', fontSize: '0.875rem' }}>
+        <Section title="Volunteer" unbordered>
           {volunteer ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <span style={{ fontWeight: 600 }}>{volunteer.full_name ?? 'Name not recorded'}</span>
-              {volunteer.phone_number && (
-                <span style={{ color: 'var(--color-text-secondary)' }}>{volunteer.phone_number}</span>
-              )}
-              {volunteer.organization && (
-                <span style={{ color: 'var(--color-text-secondary)' }}>{volunteer.organization}</span>
-              )}
+              <DetailRow label="Name">
+                <Link
+                  to={`/volunteers/${volunteer.id}`}
+                  style={{ fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                >
+                  {volunteer.full_name ?? 'Name not recorded'}
+                </Link>
+              </DetailRow>
+              <DetailRow label="Phone">
+                {volunteer.phone_number ?? <span style={toneText.neutral}>Not provided</span>}
+              </DetailRow>
             </div>
           ) : (
-            <span style={{ color: 'var(--color-text-secondary)' }}>
+            <span style={toneText.neutral}>
               {canAssign(request)
                 ? 'No volunteer assigned yet. You can assign one by hand.'
-                : 'No volunteer assigned yet.'}
+                : 'No volunteer assigned.'}
             </span>
           )}
-        </div>
+        </Section>
       </Card>
+
       {assignOpen && request && (
         <AssignVolunteerDialog
           request={request}
           onClose={() => setAssignOpen(false)}
-          onAssigned={(volunteer) => {
+          onAssigned={(assigned) => {
             setRequest((prev) =>
               prev
                 ? {
                     ...prev,
                     status: 'DISPATCHED',
                     assigned_volunteer: {
-                      id: volunteer.id,
-                      full_name: volunteer.full_name,
-                      phone_number: volunteer.phone_number,
+                      id: assigned.id,
+                      full_name: assigned.full_name,
+                      phone_number: assigned.phone_number,
                     },
                   }
                 : prev,
             );
             setNotice(
-              `${volunteer.full_name ?? 'Volunteer'} was assigned and has been asked to accept.`,
+              `${assigned.full_name ?? 'Volunteer'} was assigned and has been asked to accept.`,
             );
           }}
         />

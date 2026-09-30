@@ -2,102 +2,66 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { AgeCell } from '../../components/ui/AgeCell';
+import { Alert } from '../../components/ui/Alert';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Section } from '../../components/ui/Section';
+import { StatStrip, StatTile } from '../../components/ui/StatTile';
+import { SkeletonTable, SkeletonTiles } from '../../components/ui/Skeleton';
 import {
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from '../../components/ui/Table';
-import { fetchPoliceOverview, fetchPoliceRequests } from '../../api/client';
-import type { PoliceOverview, PoliceRequest, RequestStatus } from '../../api/types';
-import { priorityLabel } from '../../api/types';
+import { fetchPoliceRequests } from '../../api/client';
+import type { PoliceRequest } from '../../api/types';
+import { useOverview } from '../../lib/useOverview';
 import {
-  Activity,
-  AlertCircle,
-  CheckCircle,
-  ClipboardCheck,
-  Clock,
-  MapPin,
-  Users,
-  type LucideIcon,
-} from 'lucide-react';
+  categoryLabel,
+  OPEN_STATUSES,
+  priorityLabel,
+  shortId,
+  statusLabel,
+} from '../../lib/format';
+import { priorityTone, requestStatusTone, toneText, type Tone } from '../../lib/tone';
+import { pageStack } from '../../lib/styles';
 
-const OPEN_STATUSES: RequestStatus[] = ['PENDING', 'MATCHING', 'DISPATCHED', 'ACCEPTED', 'IN_PROGRESS'];
-
-const REFRESH_MS = 30_000;
 const RECENT_LIMIT = 6;
-
-const statusVariant: Record<RequestStatus, 'success' | 'warning' | 'error' | 'default'> = {
-  COMPLETED: 'success',
-  CANCELLED: 'error',
-  UNASSIGNED: 'error',
-  PENDING: 'warning',
-  MATCHING: 'warning',
-  DISPATCHED: 'warning',
-  ACCEPTED: 'default',
-  IN_PROGRESS: 'default',
-};
-
-const formatTime = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
-
-/**
- * The console's own day, sent to the API as the "completed today" window.
- *
- * Neon runs in UTC. Without this an officer in IST reading the tile before
- * 05:30 UTC saw yesterday's completions counted as today's, and the number
- * disagreed with the same filter on the Requests page.
- */
-function todayWindow(): { from: string; to: string } {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return { from: start.toISOString(), to: end.toISOString() };
-}
-
-interface Tile {
-  label: string;
-  value: number;
-  icon: LucideIcon;
-  tone: string;
-  to: string;
-}
+const RECENT_FETCH = '100';
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [overview, setOverview] = useState<PoliceOverview | null>(null);
-  const [requests, setRequests] = useState<PoliceRequest[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
+  // The header already polls this endpoint; the Dashboard used to run a second
+  // interval against the same URL, so two counts could be on screen at once and
+  // disagree for the length of a refresh.
+  const { overview, generatedAt, loading: overviewLoading, error: overviewError, reload } =
+    useOverview();
 
-  const load = useCallback(async () => {
+  const [requests, setRequests] = useState<PoliceRequest[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+
+  const loadRequests = useCallback(async () => {
     try {
-      const [overviewResult, requestResult] = await Promise.all([
-        fetchPoliceOverview(todayWindow()),
-        // The recent table only; the tiles come from the aggregate, so there is
-        // no reason to pull 200 rows to count them on the client.
-        fetchPoliceRequests({ limit: '100' }),
-      ]);
-      setOverview(overviewResult);
-      setRequests(requestResult.requests);
-      setRefreshedAt(new Date());
-      setError(null);
+      // The recent table only; the counts come from the aggregate, so there is
+      // no reason to pull 200 rows to total them on the client.
+      const result = await fetchPoliceRequests({ limit: RECENT_FETCH });
+      setRequests(result.requests);
+      setListError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
+      setListError(err instanceof Error ? err.message : 'Could not load recent requests');
     } finally {
-      setLoading(false);
+      setListLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void load();
-    const timer = setInterval(() => void load(), REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [load]);
+    void loadRequests();
+  }, [loadRequests]);
 
   const openRequests = useMemo(
     () => requests.filter((r) => OPEN_STATUSES.includes(r.status)),
@@ -117,261 +81,191 @@ export const Dashboard: React.FC = () => {
     [requests],
   );
 
-  const tiles = useMemo<Tile[]>(() => {
-    if (!overview) return [];
-    return [
-      {
-        label: 'Open requests',
-        value: overview.open_requests,
-        icon: Clock,
-        tone: 'var(--color-text-secondary)',
-        to: '/requests',
-      },
-      {
-        label: 'Active operations',
-        value: overview.active_operations,
-        icon: Activity,
-        tone: '#2563eb',
-        to: '/monitoring',
-      },
-      {
-        label: 'Nobody assigned',
-        value: overview.unassigned_requests,
-        icon: Users,
-        tone: 'var(--color-status-warning)',
-        to: '/requests',
-      },
-      {
-        label: 'Urgent open',
-        value: overview.urgent_requests,
-        icon: AlertCircle,
-        tone: 'var(--color-status-error)',
-        to: '/requests',
-      },
-      {
-        label: 'Completed today',
-        value: overview.completed_today,
-        icon: CheckCircle,
-        tone: 'var(--color-status-success)',
-        to: '/requests',
-      },
-      {
-        label: 'SOS to review',
-        value: overview.emergencies_awaiting_review,
-        icon: MapPin,
-        tone: 'var(--color-status-error)',
-        to: '/emergencies',
-      },
-      {
-        label: 'Verifications pending',
-        value: overview.verifications_pending,
-        icon: ClipboardCheck,
-        tone: 'var(--color-status-warning)',
-        to: '/verification',
-      },
-      {
-        label: 'Volunteers free',
-        value: overview.volunteers_available,
-        icon: Users,
-        tone: 'var(--color-status-success)',
-        to: '/volunteers',
-      },
-    ];
-  }, [overview]);
+  /**
+   * Four raised tiles, and only the things that need a person to decide.
+   *
+   * The previous eight-tile grid gave "volunteers free" the same weight as "SOS
+   * to review", so a station with nothing to do and a station with two people
+   * waiting for emergency review produced the same visual page. The four quiet
+   * figures dropped to `StatStrip` are context, not calls to action.
+   */
+  const decisions = useMemo<Array<{ label: string; value: number; hint: string; to: string; tone: Tone }>>(
+    () =>
+      overview
+        ? [
+            {
+              label: 'SOS to review',
+              value: overview.emergencies_awaiting_review,
+              hint: 'Emergency events logged by the agent, not yet reviewed',
+              to: '/emergencies',
+              tone: overview.emergencies_awaiting_review > 0 ? 'error' : 'neutral',
+            },
+            {
+              label: 'Registrations to review',
+              value: overview.verifications_pending,
+              hint: 'Seniors and volunteers waiting on approval',
+              to: '/verification',
+              tone: overview.verifications_pending > 0 ? 'warning' : 'neutral',
+            },
+            {
+              label: 'Urgent requests open',
+              value: overview.urgent_requests,
+              hint: 'Flagged urgent and not yet finished',
+              to: '/monitoring',
+              tone: overview.urgent_requests > 0 ? 'error' : 'neutral',
+            },
+            {
+              label: 'Nobody assigned',
+              value: overview.unassigned_requests,
+              hint: 'Open with no volunteer and no answer to a dispatch',
+              to: '/requests',
+              tone: overview.unassigned_requests > 0 ? 'warning' : 'neutral',
+            },
+          ]
+        : [],
+    [overview],
+  );
 
-  if (loading) {
-    return <div style={{ color: 'var(--color-text-secondary)' }}>Loading dashboard…</div>;
-  }
+  const context = useMemo(
+    () =>
+      overview
+        ? [
+            { label: 'open requests', value: overview.open_requests },
+            { label: 'operations running', value: overview.active_operations },
+            { label: 'completed today', value: overview.completed_today },
+            { label: 'volunteers free', value: overview.volunteers_available },
+          ]
+        : [],
+    [overview],
+  );
+
+  const loading = overviewLoading || listLoading;
+  const error = overviewError ?? listError;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: '1rem',
-          flexWrap: 'wrap',
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: '1.875rem', fontWeight: 700, margin: 0 }}>Overall Situation</h1>
-          <p style={{ color: 'var(--color-text-secondary)', margin: '0.4rem 0 0' }}>
-            Live operational picture across all jurisdictions
-          </p>
-        </div>
-
-        {refreshedAt && (
-          <span
-            style={{
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              padding: '0.4rem 0.75rem',
-              borderRadius: '999px',
-              background: 'var(--color-status-success-bg)',
-              color: '#047857',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            ● LIVE · updated {refreshedAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
-          </span>
-        )}
-      </div>
-
+    <div style={pageStack}>
       {error && (
-        <div
-          role="alert"
-          style={{
-            padding: '0.75rem 1rem',
-            borderRadius: '0.375rem',
-            backgroundColor: 'var(--color-status-error-bg)',
-            color: 'var(--color-status-error)',
-            fontSize: '0.875rem',
-          }}
-        >
+        <Alert onRetry={() => { void reload(); void loadRequests(); }}>
           {error}
+          {overviewError && listError && ' The rest of the board is showing its last good values.'}
+        </Alert>
+      )}
+
+      {loading && !overview ? (
+        <SkeletonTiles count={4} />
+      ) : (
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          {decisions.map((item) => (
+            <StatTile
+              key={item.label}
+              label={item.label}
+              value={item.value}
+              hint={item.hint}
+              tone={item.tone}
+              to={item.to}
+            />
+          ))}
         </div>
       )}
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '1rem',
-        }}
+      {context.length > 0 && <StatStrip items={context} />}
+
+      <Section
+        title="Latest open requests"
+        description="The six most recently raised requests that are not finished."
+        actions={
+          <Link to="/requests" style={{ fontSize: 'var(--text-meta)', fontWeight: 600 }}>
+            All requests →
+          </Link>
+        }
       >
-        {tiles.map((tile) => (
-          <Link
-            key={tile.label}
-            to={tile.to}
-            style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
-          >
-            <Card
-              style={{
-                padding: '1rem 1.25rem',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.25rem',
-              }}
-            >
-              <span
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  fontSize: '0.8rem',
-                  color: 'var(--color-text-secondary)',
-                }}
-              >
-                {tile.label}
-                <tile.icon size={16} style={{ color: tile.tone, flexShrink: 0 }} />
-              </span>
-              <span style={{ fontSize: '1.875rem', fontWeight: 700, lineHeight: 1.1 }}>
-                {tile.value}
-              </span>
-            </Card>
-          </Link>
-        ))}
-      </div>
+        <Card flush>
+          {listLoading && requests.length === 0 ? (
+            <SkeletonTable columns={6} rows={RECENT_LIMIT} />
+          ) : (
+            <Table density="dense">
+              <TableCaption>
+                The six most recently raised open assistance requests. Each row links to its detail
+                page.
+              </TableCaption>
+              <TableHead>
+                <TableRow>
+                  <TableHeader width="5rem">Waiting</TableHeader>
+                  <TableHeader>Caller</TableHeader>
+                  <TableHeader>Category</TableHeader>
+                  <TableHeader>Priority</TableHeader>
+                  <TableHeader>Status</TableHeader>
+                  <TableHeader align="right">Ref</TableHeader>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {latestOpen.map((req) => (
+                  <TableRow key={req.id} onClick={() => navigate(`/requests/${req.id}`)}>
+                    <TableCell>
+                      <AgeCell createdAt={req.created_at} status={req.status} now={generatedAt!.getTime()} />
+                    </TableCell>
+                    <TableCell>
+                      {/* The focusable path to the same row. */}
+                      <Link
+                        to={`/requests/${req.id}`}
+                        style={{ fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                      >
+                        {req.senior.full_name ?? req.senior.email ?? 'Unknown'}
+                      </Link>
+                    </TableCell>
+                    <TableCell style={toneText.neutral}>{categoryLabel(req.category)}</TableCell>
+                    <TableCell>
+                      <Badge tone={priorityTone(req.priority)} state={req.priority === 'urgent'}>
+                        {priorityLabel(req.priority)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge tone={requestStatusTone(req.status)} state dot>
+                        {statusLabel(req.status)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell align="right">
+                      <span className="mono" style={toneText.neutral}>
+                        {shortId(req.id)}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
 
-      <Card>
-        <div
-          style={{
-            padding: '1rem 1.25rem',
-            borderBottom: '1px solid var(--color-border)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: '1rem',
-          }}
-        >
-          <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Latest open requests</h2>
-          <Link
-            to="/requests"
-            style={{ fontSize: '0.75rem', color: 'var(--color-primary-navy)', fontWeight: 600 }}
-          >
-            View all requests →
-          </Link>
-        </div>
-
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableHeader>ID</TableHeader>
-              <TableHeader>Caller</TableHeader>
-              <TableHeader>Category</TableHeader>
-              <TableHeader>Priority</TableHeader>
-              <TableHeader>Status</TableHeader>
-              <TableHeader>Time</TableHeader>
-            </TableRow>
-          </TableHead>
-
-          <TableBody>
-            {latestOpen.map((req) => (
-              <TableRow
-                key={req.id}
-                onClick={() => navigate(`/requests/${req.id}`)}
-                style={{ cursor: 'pointer' }}
-              >
-                <TableCell>
-                  <span style={{ fontWeight: 500, color: 'var(--color-text-secondary)' }}>
-                    {req.id.slice(0, 8)}
-                  </span>
-                </TableCell>
-
-                <TableCell>
-                  {req.senior.full_name ?? req.senior.email ?? 'Unknown'}
-                </TableCell>
-
-                <TableCell>{req.category.replace(/_/g, ' ')}</TableCell>
-
-                <TableCell>
-                  <Badge variant={req.priority === 'urgent' ? 'error' : 'default'}>
-                    {priorityLabel(req.priority)}
-                  </Badge>
-                </TableCell>
-
-                <TableCell>
-                  <Badge variant={statusVariant[req.status]}>{req.status}</Badge>
-                </TableCell>
-
-                <TableCell style={{ color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
-                  {formatTime(req.created_at)}
-                </TableCell>
-              </TableRow>
-            ))}
-
-            {latestOpen.length === 0 && (
-              <TableRow>
-                <TableCell>
-                  <div
-                    style={{
-                      padding: '2rem',
-                      textAlign: 'center',
-                      color: 'var(--color-text-secondary)',
-                    }}
-                  >
-                    {openRequests.length === 0
-                      ? 'No open requests.'
-                      : 'No open requests on this page of results.'}
-                  </div>
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </Card>
+                {latestOpen.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6}>
+                      <EmptyState
+                        title={openRequests.length === 0 ? 'No open requests' : 'No open request on this page'}
+                        description={
+                          openRequests.length === 0
+                            ? 'Nothing is waiting on a volunteer right now.'
+                            : `${openRequests.length} open request${
+                                openRequests.length === 1 ? '' : 's'
+                              } exist, but none are in the ${RECENT_FETCH} most recent. Open All requests to reach them.`
+                        }
+                        action={
+                          <Link
+                            to="/monitoring"
+                            style={{ fontWeight: 600, color: 'var(--color-navy)' }}
+                          >
+                            Open the monitoring board →
+                          </Link>
+                        }
+                      />
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </Card>
+      </Section>
 
       {unlocated > 0 && (
-        <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
+        <p style={{ margin: 0, fontSize: 'var(--text-meta)', color: 'var(--color-ink-muted)' }}>
           {unlocated} of the {requests.length} most recent requests carry no coordinates, so they are
-          not plotted on the{' '}
-          <Link to="/map" style={{ color: 'var(--color-primary-navy)' }}>
-            map
-          </Link>
-          .
+          not plotted on the <Link to="/map">map</Link>.
         </p>
       )}
     </div>

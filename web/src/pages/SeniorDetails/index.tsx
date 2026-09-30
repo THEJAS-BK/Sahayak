@@ -1,28 +1,37 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/Table';
+import { Alert } from '../../components/ui/Alert';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Section } from '../../components/ui/Section';
+import { Skeleton } from '../../components/ui/Skeleton';
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../components/ui/Table';
 import { fetchSenior } from '../../api/client';
 import type { SeniorDetail } from '../../api/types';
-
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-
-const FIELD: React.CSSProperties = { color: 'var(--color-text-secondary)', fontSize: '0.8125rem' };
-
-const SectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div
-    style={{
-      padding: '1rem 1.5rem',
-      borderBottom: '1px solid var(--color-border)',
-      fontWeight: 600,
-      fontSize: '0.9375rem',
-    }}
-  >
-    {children}
-  </div>
-);
+import {
+  categoryLabel,
+  elapsedLabel,
+  formatDateTime,
+  statusLabel,
+  triggerLabel,
+  verificationRoleLabel,
+} from '../../lib/format';
+import {
+  emergencyStatusTone,
+  seniorVerificationTone,
+  toneText,
+  verificationStatusTone,
+} from '../../lib/tone';
+import { pageStack } from '../../lib/styles';
 
 /** P-07: one senior. Aadhaar is not part of this payload and is not displayed. */
 export const SeniorDetails: React.FC = () => {
@@ -31,36 +40,59 @@ export const SeniorDetails: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!seniorId) return;
     setLoading(true);
     setError(null);
-    fetchSenior(seniorId)
-      .then((result) => setSenior(result.senior))
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : 'Failed to load senior');
-        setSenior(null);
-      })
-      .finally(() => setLoading(false));
+    try {
+      const result = await fetchSenior(seniorId);
+      setSenior(result.senior);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load the senior');
+      setSenior(null);
+    } finally {
+      setLoading(false);
+    }
   }, [seniorId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const backLink = (
+    <Link
+      to="/seniors"
+      style={{
+        color: 'var(--color-ink-muted)',
+        fontSize: 'var(--text-meta)',
+        alignSelf: 'flex-start',
+      }}
+    >
+      ← Seniors
+    </Link>
+  );
 
   if (loading) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
-        Loading senior…
+      <div style={pageStack}>
+        {backLink}
+        <Card>
+          <div role="status" aria-live="polite" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <span className="sr-only">Loading the senior…</span>
+            <Skeleton width="35%" height="1.25rem" />
+            <Skeleton width="60%" />
+            <Skeleton width="45%" />
+          </div>
+        </Card>
       </div>
     );
   }
 
   if (error || !senior) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div style={{ padding: '0.75rem 1rem', borderRadius: '0.375rem', backgroundColor: 'rgba(220,38,38,0.08)', color: 'var(--color-status-error)', fontSize: '0.875rem' }}>
-          {error ?? 'Senior not found.'}
-        </div>
-        <Link to="/seniors" style={{ color: 'var(--color-primary-navy)' }}>
-          ← Back to seniors
-        </Link>
+      <div style={pageStack}>
+        {backLink}
+        <Alert onRetry={() => void load()}>{error ?? 'Senior not found.'}</Alert>
       </div>
     );
   }
@@ -68,178 +100,239 @@ export const SeniorDetails: React.FC = () => {
   const contact = senior.emergency_contact;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <div>
-        <Link to="/seniors" style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-          ← Seniors
-        </Link>
-        <h1 style={{ fontSize: '1.875rem', fontWeight: 700, margin: '0.5rem 0 0.5rem 0' }}>
+    <div style={pageStack}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {backLink}
+        <h1 style={{ fontSize: 'var(--text-title)', fontWeight: 700, margin: 0 }}>
           {senior.full_name ?? 'Profile incomplete'}
         </h1>
-        <Badge variant={senior.is_verified ? 'success' : 'warning'}>
-          {senior.verification_status === 'NONE' ? 'Not approved' : senior.verification_status}
-        </Badge>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <Badge
+            tone={senior.is_verified ? 'success' : seniorVerificationTone(senior.verification_status)}
+            state
+            dot
+          >
+            {senior.verification_status === 'NONE' ? 'Not approved' : senior.verification_status}
+          </Badge>
+          <span style={{ ...toneText.neutral, fontSize: 'var(--text-meta)' }}>
+            Registered {formatDateTime(senior.created_at)}
+          </span>
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(19rem, 1fr))',
+          gap: '1.5rem',
+        }}
+      >
         <Card>
-          <SectionTitle>Contact</SectionTitle>
-          <dl style={{ padding: '1.5rem', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 1rem', margin: 0 }}>
-            <dt style={FIELD}>Email</dt>
-            <dd style={{ margin: 0 }}>{senior.email}</dd>
-            <dt style={FIELD}>Phone</dt>
-            <dd style={{ margin: 0 }}>{senior.phone_number ?? '—'}</dd>
-            <dt style={FIELD}>Language</dt>
-            <dd style={{ margin: 0 }}>{senior.preferred_language ?? '—'}</dd>
-            <dt style={FIELD}>Home</dt>
-            <dd style={{ margin: 0 }}>
-              {senior.home_latitude !== null && senior.home_longitude !== null
-                ? `${senior.home_latitude}, ${senior.home_longitude}`
-                : '—'}
-            </dd>
-            <dt style={FIELD}>Registered</dt>
-            <dd style={{ margin: 0 }}>{formatDate(senior.created_at)}</dd>
-          </dl>
-        </Card>
-
-        <Card>
-          <SectionTitle>Emergency contact</SectionTitle>
-          {contact ? (
-            <dl style={{ padding: '1.5rem', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 1rem', margin: 0 }}>
-              <dt style={FIELD}>Name</dt>
-              <dd style={{ margin: 0 }}>{contact.name ?? '—'}</dd>
-              <dt style={FIELD}>Phone</dt>
-              <dd style={{ margin: 0 }}>{contact.phone ?? '—'}</dd>
-              <dt style={FIELD}>Relation</dt>
-              <dd style={{ margin: 0 }}>{contact.relation ?? '—'}</dd>
+          <Section title="Contact" unbordered>
+            <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 1rem', margin: 0 }}>
+              <dt style={toneText.neutral}>Email</dt>
+              <dd style={{ margin: 0 }}>{senior.email}</dd>
+              <dt style={toneText.neutral}>Phone</dt>
+              <dd style={{ margin: 0 }}>
+                {senior.phone_number ?? <span style={toneText.neutral}>Not provided</span>}
+              </dd>
+              <dt style={toneText.neutral}>Language</dt>
+              <dd style={{ margin: 0 }}>
+                {senior.preferred_language ?? <span style={toneText.neutral}>Not stated</span>}
+              </dd>
+              <dt style={toneText.neutral}>Home</dt>
+              <dd style={{ margin: 0 }}>
+                {senior.home_latitude !== null && senior.home_longitude !== null ? (
+                  <span className="mono">
+                    {senior.home_latitude.toFixed(4)}, {senior.home_longitude.toFixed(4)}
+                  </span>
+                ) : (
+                  <span style={toneText.neutral}>Not recorded</span>
+                )}
+              </dd>
+              <dt style={toneText.neutral}>Requests</dt>
+              <dd style={{ margin: 0 }}>
+                <span className="tnum">{senior.request_count}</span>
+              </dd>
             </dl>
-          ) : (
-            <div style={{ padding: '1.5rem', ...FIELD, margin: 0 }}>
-              None on file. This senior registered without an emergency contact.
-            </div>
-          )}
+          </Section>
+        </Card>
+
+        <Card>
+          <Section title="Emergency contact" unbordered>
+            {contact ? (
+              <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 1rem', margin: 0 }}>
+                <dt style={toneText.neutral}>Name</dt>
+                <dd style={{ margin: 0 }}>{contact.name ?? <span style={toneText.neutral}>—</span>}</dd>
+                <dt style={toneText.neutral}>Phone</dt>
+                <dd style={{ margin: 0 }}>
+                  {contact.phone ?? <span style={toneText.neutral}>Not provided</span>}
+                </dd>
+                <dt style={toneText.neutral}>Relation</dt>
+                <dd style={{ margin: 0 }}>{contact.relation ?? <span style={toneText.neutral}>—</span>}</dd>
+              </dl>
+            ) : (
+              /* Called out rather than a bare dash: no emergency contact is a
+                 gap someone should act on, not a missing optional field. */
+              <Alert tone="warning" role="status">
+                No emergency contact on file. This senior registered without one.
+              </Alert>
+            )}
+          </Section>
         </Card>
       </div>
 
-      <Card>
-        <SectionTitle>Verifications</SectionTitle>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableHeader>Submitted</TableHeader>
-              <TableHeader>Role</TableHeader>
-              <TableHeader>Status</TableHeader>
-              <TableHeader>Reason</TableHeader>
-              <TableHeader>Reviewed by</TableHeader>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {senior.verifications.map((verification) => (
-              <TableRow key={verification.id}>
-                <TableCell style={{ whiteSpace: 'nowrap' }}>{formatDate(verification.created_at)}</TableCell>
-                <TableCell style={{ textTransform: 'capitalize' }}>{verification.role}</TableCell>
-                <TableCell>
-                  <Badge
-                    variant={
-                      verification.status === 'APPROVED'
-                        ? 'success'
-                        : verification.status === 'REJECTED'
-                          ? 'error'
-                          : 'warning'
-                    }
-                  >
-                    {verification.status}
-                  </Badge>
-                </TableCell>
-                <TableCell style={{ color: 'var(--color-text-secondary)' }}>
-                  {verification.review_reason ?? '—'}
-                </TableCell>
-                <TableCell style={{ color: 'var(--color-text-secondary)' }}>
-                  {verification.reviewer_email ?? '—'}
-                </TableCell>
-              </TableRow>
-            ))}
-            {senior.verifications.length === 0 && (
-              <TableRow>
-                <TableCell>
-                  <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
-                    No verification records.
-                  </div>
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </Card>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
-        <Card>
-          <SectionTitle>Recent requests</SectionTitle>
-          <Table>
+      <Section title="Verifications" unbordered>
+        <Card flush>
+          <Table density="dense">
+            <TableCaption>
+              Identity verifications submitted for this senior, with the review outcome.
+            </TableCaption>
             <TableHead>
               <TableRow>
-                <TableHeader>Category</TableHeader>
+                <TableHeader>Submitted</TableHeader>
+                <TableHeader>Role</TableHeader>
                 <TableHeader>Status</TableHeader>
-                <TableHeader>Created</TableHeader>
+                <TableHeader>Reason</TableHeader>
+                <TableHeader>Reviewed by</TableHeader>
               </TableRow>
             </TableHead>
             <TableBody>
-              {senior.requests.map((req) => (
-                <TableRow key={req.id}>
-                  <TableCell>
-                    <Link to={`/requests/${req.id}`} style={{ color: 'var(--color-primary-navy)' }}>
-                      {req.category}
-                    </Link>
+              {senior.verifications.map((verification) => (
+                <TableRow key={verification.id}>
+                  <TableCell style={{ ...toneText.neutral, whiteSpace: 'nowrap' }}>
+                    {formatDateTime(verification.created_at)}
                   </TableCell>
-                  <TableCell>{req.status}</TableCell>
-                  <TableCell style={{ whiteSpace: 'nowrap' }}>{formatDate(req.created_at)}</TableCell>
+                  <TableCell>{verificationRoleLabel(verification.role)}</TableCell>
+                  <TableCell>
+                    <Badge tone={verificationStatusTone(verification.status)} state dot>
+                      {verification.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell style={toneText.neutral}>
+                    {verification.review_reason ?? '—'}
+                  </TableCell>
+                  <TableCell style={toneText.neutral}>
+                    {verification.reviewer_email ?? '—'}
+                  </TableCell>
                 </TableRow>
               ))}
-              {senior.requests.length === 0 && (
+
+              {senior.verifications.length === 0 && (
                 <TableRow>
-                  <TableCell>
-                    <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
-                      No requests.
-                    </div>
+                  <TableCell colSpan={5}>
+                    <EmptyState
+                      title="No verification record"
+                      description="This senior has never submitted an identity verification."
+                    />
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </Card>
+      </Section>
 
-        <Card>
-          <SectionTitle>Emergency events</SectionTitle>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableHeader>Trigger</TableHeader>
-                <TableHeader>Status</TableHeader>
-                <TableHeader>Raised</TableHeader>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {senior.emergencies.map((event) => (
-                <TableRow key={event.id}>
-                  <TableCell>{event.trigger_type.replace(/_/g, ' ')}</TableCell>
-                  <TableCell>
-                    <Badge variant={event.status === 'LOGGED' ? 'error' : 'success'}>{event.status}</Badge>
-                  </TableCell>
-                  <TableCell style={{ whiteSpace: 'nowrap' }}>{formatDate(event.created_at)}</TableCell>
-                </TableRow>
-              ))}
-              {senior.emergencies.length === 0 && (
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(20rem, 1fr))',
+          gap: '1.5rem',
+        }}
+      >
+        <Section title="Recent requests" unbordered>
+          <Card flush>
+            <Table density="dense">
+              <TableCaption>
+                Assistance requests raised by this senior, newest first.
+              </TableCaption>
+              <TableHead>
                 <TableRow>
-                  <TableCell>
-                    <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
-                      No emergency events.
-                    </div>
-                  </TableCell>
+                  <TableHeader>Category</TableHeader>
+                  <TableHeader>Status</TableHeader>
+                  <TableHeader>Age</TableHeader>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </Card>
+              </TableHead>
+              <TableBody>
+                {senior.requests.map((req) => (
+                  <TableRow key={req.id}>
+                    <TableCell>
+                      <Link
+                        to={`/requests/${req.id}`}
+                        style={{ fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                      >
+                        {categoryLabel(req.category)}
+                      </Link>
+                    </TableCell>
+                    <TableCell style={toneText.neutral}>{statusLabel(req.status)}</TableCell>
+                    <TableCell>
+                      <span className="tnum" style={toneText.neutral}>
+                        {elapsedLabel(req.created_at) ?? '—'}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+
+                {senior.requests.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={3}>
+                      <EmptyState
+                        title="No requests"
+                        description="This senior has not raised an assistance request."
+                      />
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+        </Section>
+
+        <Section title="Emergency events" unbordered>
+          <Card flush>
+            <Table density="dense">
+              <TableCaption>
+                Emergency events raised for this senior, newest first. A reviewed event has been
+                seen by an officer; it is not necessarily resolved.
+              </TableCaption>
+              <TableHead>
+                <TableRow>
+                  <TableHeader>Trigger</TableHeader>
+                  <TableHeader>Status</TableHeader>
+                  <TableHeader>Age</TableHeader>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {senior.emergencies.map((event) => (
+                  <TableRow key={event.id}>
+                    <TableCell>{triggerLabel(event.trigger_type)}</TableCell>
+                    <TableCell>
+                      <Badge tone={emergencyStatusTone(event.status)} state dot>
+                        {event.status === 'LOGGED' ? 'Needs review' : 'Reviewed'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <span className="tnum" style={toneText.neutral}>
+                        {elapsedLabel(event.created_at) ?? '—'}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+
+                {senior.emergencies.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={3}>
+                      <EmptyState
+                        title="No emergency event"
+                        description="The agent has not raised an SOS for this senior."
+                      />
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+        </Section>
       </div>
     </div>
   );

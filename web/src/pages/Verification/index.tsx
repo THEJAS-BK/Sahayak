@@ -1,34 +1,50 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button } from '../../components/ui/Button';
+import { Button, DangerButton } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
+import { Modal } from '../../components/ui/Modal';
+import { Alert } from '../../components/ui/Alert';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { FilterChip } from '../../components/ui/FilterChip';
+import { Field } from '../../components/ui/Field';
+import { Section } from '../../components/ui/Section';
+import { StatStrip } from '../../components/ui/StatTile';
+import { Skeleton, SkeletonTable } from '../../components/ui/Skeleton';
+import { SearchInput } from '../../components/ui/SearchInput';
+import { Card } from '../../components/ui/Card';
 import {
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from '../../components/ui/Table';
 import { fetchVerification, fetchVerifications, reviewVerification } from '../../api/client';
-import type { VerificationStatus, VerificationSummary, VerificationDetail } from '../../api/types';
-import { Eye, Search } from 'lucide-react';
-
-const roleLabel = (role: string) =>
-  role === 'senior' ? 'Senior' : role === 'volunteer' ? 'Volunteer' : role;
-
-const statusVariant: Record<VerificationStatus, 'success' | 'warning' | 'error'> = {
-  APPROVED: 'success',
-  PENDING: 'warning',
-  REJECTED: 'error',
-};
-
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+import type { VerificationDetail, VerificationStatus, VerificationSummary } from '../../api/types';
+import { Eye } from 'lucide-react';
+import { elapsedLabel, formatDateTime, shortId, verificationRoleLabel } from '../../lib/format';
+import { verificationStatusTone, toneText } from '../../lib/tone';
+import { pageStack } from '../../lib/styles';
 
 const PAGE_SIZE = 25;
+const REASON_LIMIT = 500;
+
+type StatusView = VerificationStatus | 'ALL';
+type RoleView = 'all' | 'senior' | 'volunteer';
+
+const STATUS_VIEWS: Array<{ value: StatusView; label: string }> = [
+  { value: 'PENDING', label: 'Needs review' },
+  { value: 'APPROVED', label: 'Approved' },
+  { value: 'REJECTED', label: 'Rejected' },
+  { value: 'ALL', label: 'All' },
+];
+
+const ROLE_VIEWS: Array<{ value: RoleView; label: string }> = [
+  { value: 'all', label: 'All types' },
+  { value: 'senior', label: 'Senior' },
+  { value: 'volunteer', label: 'Volunteer' },
+];
 
 /** R-01/R-02 form keys, so an officer reads "Home location" and not "home_latitude". */
 const FORM_LABELS: Record<string, string> = {
@@ -48,7 +64,7 @@ const FORM_LABELS: Record<string, string> = {
 
 /**
  * Aadhaar is a government identifier. It is deliberately not rendered, not
- * even masked, so a screenshot of this drawer cannot leak one; the police
+ * even masked, so a screenshot of this dialog cannot leak one; the police
  * console has no operational need to read it back.
  */
 const REDACTED_FIELDS = new Set(['aadhaar_number', 'aadhaar']);
@@ -61,47 +77,15 @@ function formatFormValue(value: unknown): string {
       ([key]) => !REDACTED_FIELDS.has(key),
     );
     if (entries.length === 0) return '—';
-    return entries.map(([key, v]) => `${FORM_LABELS[key] ?? key}: ${formatFormValue(v)}`).join(' · ');
+    return entries
+      .map(([key, v]) => `${FORM_LABELS[key] ?? key}: ${formatFormValue(v)}`)
+      .join(' · ');
   }
   return String(value);
 }
 
-const overlayStyle: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  backgroundColor: 'rgba(15,23,42,0.45)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '1.5rem',
-  zIndex: 60,
-};
-
-const fieldStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '0.5rem 0.75rem',
-  borderRadius: '0.375rem',
-  border: '1px solid var(--color-border)',
-  outline: 'none',
-  fontFamily: 'inherit',
-  fontSize: '0.875rem',
-  background: 'var(--color-surface-white)',
-  color: 'var(--color-text-primary)',
-};
-
-const SECTION: React.CSSProperties = {
-  fontSize: '0.6875rem',
-  textTransform: 'uppercase',
-  letterSpacing: '0.04em',
-  fontWeight: 700,
-  color: 'var(--color-text-secondary)',
-};
-
 /** V-02: the submitted form, so a decision is made on evidence not on a name. */
-const VerificationDrawer: React.FC<{
-  id: string;
-  onClose: () => void;
-}> = ({ id, onClose }) => {
+const VerificationDialog: React.FC<{ id: string; onClose: () => void }> = ({ id, onClose }) => {
   const [detail, setDetail] = useState<VerificationDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,104 +115,89 @@ const VerificationDrawer: React.FC<{
     : [];
 
   return (
-    <div style={overlayStyle} role="dialog" aria-modal="true" aria-label="Verification detail" onClick={onClose}>
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          backgroundColor: 'var(--color-surface-white)',
-          borderRadius: '0.5rem',
-          width: '100%',
-          maxWidth: '520px',
-          maxHeight: '80vh',
-          overflowY: 'auto',
-          boxShadow: '0 20px 45px rgba(15,23,42,0.25)',
-        }}
-      >
-        <div
-          style={{
-            padding: '1.25rem 1.5rem',
-            borderBottom: '1px solid var(--color-border)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            gap: '1rem',
-          }}
-        >
-          <div>
-            <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>Application</h2>
-            <p style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
-              {detail ? `${roleLabel(detail.role)} · ${detail.user.email}` : 'Loading…'}
-            </p>
+    <Modal title="Application" onClose={onClose} width={540}>
+      {loading && (
+        <div role="status" aria-live="polite" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <span className="sr-only">Loading the application…</span>
+          {Array.from({ length: 5 }, (_, i) => (
+            <Skeleton key={i} width={`${100 - i * 8}%`} />
+          ))}
+        </div>
+      )}
+
+      {error && <Alert onRetry={() => window.location.reload()}>{error}</Alert>}
+
+      {detail && (
+        <>
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.625rem',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              marginBottom: '1.25rem',
+            }}
+          >
+            <Badge tone={verificationStatusTone(detail.status)} state dot>
+              {detail.status}
+            </Badge>
+            <span style={{ fontSize: 'var(--text-meta)', color: 'var(--color-ink-muted)' }}>
+              {verificationRoleLabel(detail.role)} · {detail.user.email}
+            </span>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close">
-            Close
-          </Button>
-        </div>
 
-        <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          {loading && <p style={{ ...SECTION, margin: 0 }}>Loading…</p>}
-          {error && (
-            <p style={{ margin: 0, color: 'var(--color-status-error)', fontSize: '0.875rem' }}>{error}</p>
-          )}
+          <Section title="Submitted details" unbordered>
+            {formEntries.length === 0 ? (
+              <p style={{ margin: 0, ...toneText.neutral }}>No form data was submitted.</p>
+            ) : (
+              <dl
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(8rem, auto) 1fr',
+                  gap: '0.5rem 1rem',
+                  margin: 0,
+                }}
+              >
+                {formEntries.map(([key, value]) => (
+                  <React.Fragment key={key}>
+                    <dt style={{ fontSize: 'var(--text-meta)', color: 'var(--color-ink-muted)' }}>
+                      {FORM_LABELS[key] ?? key}
+                    </dt>
+                    <dd style={{ margin: 0, fontSize: 'var(--text-body)', wordBreak: 'break-word' }}>
+                      {formatFormValue(value)}
+                    </dd>
+                  </React.Fragment>
+                ))}
+              </dl>
+            )}
+            <p style={{ margin: '1rem 0 0', fontSize: 'var(--text-label)', ...toneText.neutral }}>
+              Aadhaar is collected for registration but is never displayed here.
+            </p>
+          </Section>
 
-          {detail && (
-            <>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <Badge variant={statusVariant[detail.status]}>{detail.status}</Badge>
-                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                  Submitted {formatDate(detail.created_at)}
-                </span>
-              </div>
-
-              <div>
-                <p style={{ ...SECTION, margin: '0 0 0.5rem' }}>Submitted details</p>
-                {formEntries.length === 0 ? (
-                  <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
-                    No form data was submitted with this application.
-                  </p>
-                ) : (
-                  <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 1rem', margin: 0 }}>
-                    {formEntries.map(([key, value]) => (
-                      <React.Fragment key={key}>
-                        <dt style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
-                          {FORM_LABELS[key] ?? key}
-                        </dt>
-                        <dd style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 500, wordBreak: 'break-word' }}>
-                          {formatFormValue(value)}
-                        </dd>
-                      </React.Fragment>
-                    ))}
-                  </dl>
-                )}
-                <p style={{ margin: '0.75rem 0 0', fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                  Aadhaar is collected for registration but is never displayed here.
+          {detail.reviewed_at && (
+            <div style={{ marginTop: '1.25rem' }}>
+              <Section title="Review" unbordered>
+                <p style={{ margin: 0, fontSize: 'var(--text-body)' }}>
+                  {detail.status} on {formatDateTime(detail.reviewed_at)}
                 </p>
-              </div>
-
-              {detail.reviewed_at && (
-                <div>
-                  <p style={{ ...SECTION, margin: '0 0 0.5rem' }}>Review</p>
-                  <p style={{ margin: 0, fontSize: '0.8125rem' }}>
-                    {detail.status} on {formatDate(detail.reviewed_at)}
+                {detail.review_reason && (
+                  <p style={{ margin: '0.25rem 0 0', fontSize: 'var(--text-body)', ...toneText.neutral }}>
+                    Reason given: {detail.review_reason}
                   </p>
-                  {detail.review_reason && (
-                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
-                      Reason: {detail.review_reason}
-                    </p>
-                  )}
-                </div>
-              )}
-            </>
+                )}
+              </Section>
+            </div>
           )}
-        </div>
-      </div>
-    </div>
+        </>
+      )}
+    </Modal>
   );
 };
 
 export const Verification: React.FC = () => {
-  const [statusFilter, setStatusFilter] = useState<VerificationStatus | 'ALL'>('ALL');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'senior' | 'volunteer'>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusView>('PENDING');
+  const [roleFilter, setRoleFilter] = useState<RoleView>('all');
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [records, setRecords] = useState<VerificationSummary[]>([]);
@@ -260,7 +229,6 @@ export const Verification: React.FC = () => {
         setCursor(result.next_cursor);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load verifications');
-        if (reset) setRecords([]);
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -272,32 +240,32 @@ export const Verification: React.FC = () => {
   useEffect(() => {
     setCursor(null);
     void load(true);
-  }, [load, appliedSearch, roleFilter]);
+  }, [load]);
 
-  const applyStatus = (id: string, status: 'APPROVED' | 'REJECTED') => {
-    setRecords((prev) =>
-      prev.map((r) =>
-        r.id === id
-          ? { ...r, status, reviewed_at: new Date().toISOString() }
-          : r,
-      ),
-    );
-  };
-
-  const updateStatus = async (record: VerificationSummary, status: 'APPROVED' | 'REJECTED', reason?: string) => {
+  const updateStatus = async (
+    record: VerificationSummary,
+    status: 'APPROVED' | 'REJECTED',
+    reason?: string,
+  ) => {
     setBusyId(record.id);
     setError(null);
     setNotice(null);
     try {
       await reviewVerification(record.id, status, reason);
-      applyStatus(record.id, status);
+      setRecords((prev) =>
+        prev.map((r) =>
+          r.id === record.id
+            ? { ...r, status, reviewed_at: new Date().toISOString() }
+            : r,
+        ),
+      );
       setNotice(
         status === 'APPROVED'
           ? `${record.full_name ?? record.email} was approved and can now sign in.`
           : `${record.full_name ?? record.email} was rejected.`,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update verification');
+      setError(err instanceof Error ? err.message : 'Failed to update the verification');
     } finally {
       setBusyId(null);
       setRejecting(null);
@@ -315,11 +283,12 @@ export const Verification: React.FC = () => {
     const q = appliedSearch.trim().toLowerCase();
     if (q === '') return true;
     return (
-      (record.full_name ?? '').toLowerCase().includes(q) ||
-      record.email.toLowerCase().includes(q)
+      (record.full_name ?? '').toLowerCase().includes(q) || record.email.toLowerCase().includes(q)
     );
   });
 
+  // Counts cover the loaded pages only, so the label says so rather than
+  // implying a whole-queue total the API never returns.
   const counts = useMemo(
     () => ({
       PENDING: records.filter((v) => v.status === 'PENDING').length,
@@ -329,217 +298,149 @@ export const Verification: React.FC = () => {
     [records],
   );
 
-  const tiles: Array<{ label: string; value: number; tone: 'warning' | 'success' | 'error' }> = [
-    { label: 'Pending review', value: counts.PENDING, tone: 'warning' },
-    { label: 'Approved', value: counts.APPROVED, tone: 'success' },
-    { label: 'Rejected / returned', value: counts.REJECTED, tone: 'error' },
-  ];
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-      <div>
-        <h1 style={{ fontSize: '1.875rem', fontWeight: 700, margin: 0 }}>Identity Verifications</h1>
-        <p style={{ color: 'var(--color-text-secondary)', margin: '0.4rem 0 0' }}>
-          Review senior citizen registrations and volunteer character verifications.
-        </p>
-      </div>
-
-      {error && (
-        <div
-          role="alert"
-          style={{
-            padding: '0.75rem 1rem',
-            borderRadius: '0.375rem',
-            backgroundColor: 'var(--color-status-error-bg)',
-            color: 'var(--color-status-error)',
-            fontSize: '0.875rem',
-          }}
-        >
-          {error}
-        </div>
-      )}
-
+    <div style={pageStack}>
+      {error && <Alert onRetry={() => void load(true)}>{error}</Alert>}
       {notice && (
-        <div
-          role="status"
-          style={{
-            padding: '0.75rem 1rem',
-            borderRadius: '0.375rem',
-            backgroundColor: 'var(--color-status-success-bg)',
-            color: 'var(--color-text-primary)',
-            fontSize: '0.875rem',
-          }}
-        >
+        <Alert tone="success" onDismiss={() => setNotice(null)}>
           {notice}
-        </div>
+        </Alert>
       )}
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '1rem',
-        }}
-      >
-        {tiles.map((tile) => (
-          <div
-            key={tile.label}
-            style={{
-              padding: '1rem 1.25rem',
-              borderRadius: '0.5rem',
-              border: '1px solid var(--color-border)',
-              backgroundColor: 'var(--color-surface-white)',
-            }}
+      <StatStrip
+        items={[
+          { label: 'loaded and pending review', value: counts.PENDING, tone: 'warning' },
+          { label: 'loaded and approved', value: counts.APPROVED, tone: 'success' },
+          { label: 'loaded and rejected', value: counts.REJECTED, tone: 'error' },
+        ]}
+      />
+
+      <Card flush>
+        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--color-rule)' }}>
+          <Section
+            title="Registrations to review"
+            description="Senior citizen registrations and volunteer character verifications."
+            unbordered
+            actions={
+              <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                {STATUS_VIEWS.map((view) => (
+                  <FilterChip
+                    key={view.value}
+                    group="Status"
+                    label={view.label}
+                    active={statusFilter === view.value}
+                    onClick={() => setStatusFilter(view.value)}
+                  />
+                ))}
+              </div>
+            }
           >
-            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>{tile.label}</div>
-            <div style={{ fontSize: '1.875rem', fontWeight: 700, marginTop: '0.35rem' }}>{tile.value}</div>
-          </div>
-        ))}
-      </div>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                {ROLE_VIEWS.map((view) => (
+                  <FilterChip
+                    key={view.value}
+                    group="Applicant type"
+                    label={view.label}
+                    active={roleFilter === view.value}
+                    onClick={() => setRoleFilter(view.value)}
+                  />
+                ))}
+              </div>
 
-      <div
-        style={{
-          borderRadius: '0.5rem',
-          border: '1px solid var(--color-border)',
-          backgroundColor: 'var(--color-surface-white)',
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          style={{
-            padding: '1rem',
-            borderBottom: '1px solid var(--color-border)',
-            display: 'flex',
-            gap: '0.75rem',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <Button
-              variant={statusFilter === 'PENDING' ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => setStatusFilter('PENDING')}
-            >
-              Needs review
-            </Button>
-            <Button
-              variant={statusFilter === 'ALL' ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => setStatusFilter('ALL')}
-            >
-              All statuses
-            </Button>
-            <Button
-              variant={statusFilter === 'APPROVED' ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => setStatusFilter('APPROVED')}
-            >
-              Approved
-            </Button>
-            <Button
-              variant={statusFilter === 'REJECTED' ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => setStatusFilter('REJECTED')}
-            >
-              Rejected
-            </Button>
-          </div>
-
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {(['all', 'senior', 'volunteer'] as const).map((role) => (
-              <Button
-                key={role}
-                variant={roleFilter === role ? 'primary' : 'ghost'}
-                size="sm"
-                onClick={() => setRoleFilter(role)}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setAppliedSearch(search.trim());
+                }}
+                style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}
               >
-                {role === 'all' ? 'All types' : roleLabel(role)}
-              </Button>
-            ))}
-          </div>
-
-          <form
-            style={{ position: 'relative', flex: 1, minWidth: '220px' }}
-            onSubmit={(e) => {
-              e.preventDefault();
-              setAppliedSearch(search.trim());
-            }}
-          >
-            <Search
-              size={16}
-              style={{
-                position: 'absolute',
-                left: '0.75rem',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--color-text-secondary)',
-                pointerEvents: 'none',
-              }}
-            />
-            <input
-              type="text"
-              placeholder="Search loaded rows by name or email..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{ ...fieldStyle, paddingLeft: '2.25rem' }}
-            />
-          </form>
+                <SearchInput
+                  value={search}
+                  onChange={setSearch}
+                  label="Search loaded rows by name or email"
+                  placeholder="Search loaded rows…"
+                  width="220px"
+                />
+                {/* Enter applies rather than filtering as you type, so the row
+                    count under the filter does not jump mid-word. */}
+                <Button type="submit" size="sm" variant="outline">
+                  Search
+                </Button>
+              </form>
+            </div>
+          </Section>
         </div>
 
-        {loading ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
-            Loading verifications…
+        {loading && records.length === 0 ? (
+          <div style={{ padding: '0.5rem 0' }}>
+            <SkeletonTable columns={7} rows={8} />
           </div>
         ) : (
           <>
-            <Table>
+            <Table density="dense" stickyHeader>
+              <TableCaption>
+                Identity verification submissions. View opens the submitted form; approve and
+                reject apply to pending applications.
+              </TableCaption>
               <TableHead>
                 <TableRow>
-                  <TableHeader>ID</TableHeader>
+                  <TableHeader width="4.5rem">Age</TableHeader>
                   <TableHeader>Applicant</TableHeader>
-                  <TableHeader>Role</TableHeader>
+                  <TableHeader>Type</TableHeader>
                   <TableHeader>Submitted</TableHeader>
                   <TableHeader>Status</TableHeader>
-                  <TableHeader>Actions</TableHeader>
+                  <TableHeader align="right">Ref</TableHeader>
+                  <TableHeader align="right" width="14rem">
+                    Actions
+                  </TableHeader>
                 </TableRow>
               </TableHead>
-
               <TableBody>
                 {filtered.map((record) => (
                   <TableRow key={record.id}>
                     <TableCell>
-                      <span style={{ fontWeight: 500, color: 'var(--color-text-secondary)' }}>
-                        {record.id.slice(0, 8)}
+                      <span className="tnum" style={toneText.neutral}>
+                        {elapsedLabel(record.created_at) ?? '—'}
                       </span>
                     </TableCell>
-
                     <TableCell>
-                      <span style={{ fontWeight: 500 }}>{record.full_name ?? 'Name not provided'}</span>
-                      <div style={{ color: 'var(--color-text-secondary)', fontSize: '0.75rem' }}>
+                      <span style={{ fontWeight: 600 }}>
+                        {record.full_name ?? 'Name not provided'}
+                      </span>
+                      <div style={{ ...toneText.neutral, fontSize: 'var(--text-label)' }}>
                         {record.email}
                       </div>
                     </TableCell>
-
-                    <TableCell>{roleLabel(record.role)}</TableCell>
-
-                    <TableCell style={{ color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
-                      {formatDate(record.created_at)}
+                    <TableCell style={toneText.neutral}>{verificationRoleLabel(record.role)}</TableCell>
+                    <TableCell style={{ ...toneText.neutral, whiteSpace: 'nowrap' }}>
+                      {formatDateTime(record.created_at)}
                     </TableCell>
-
                     <TableCell>
-                      <Badge variant={statusVariant[record.status]}>{record.status}</Badge>
+                      <Badge tone={verificationStatusTone(record.status)} state dot>
+                        {record.status}
+                      </Badge>
                     </TableCell>
-
-                    <TableCell>
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <TableCell align="right">
+                      <span className="mono" style={toneText.neutral}>
+                        {shortId(record.id)}
+                      </span>
+                    </TableCell>
+                    <TableCell align="right">
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: '0.375rem',
+                          alignItems: 'center',
+                          justifyContent: 'flex-end',
+                        }}
+                      >
                         <Button
                           variant="ghost"
                           size="sm"
+                          icon={<Eye size={14} />}
                           onClick={() => setDetailId(record.id)}
-                          title="View the submitted application"
                         >
-                          <Eye size={14} style={{ marginRight: '0.25rem' }} />
                           View
                         </Button>
 
@@ -553,23 +454,19 @@ export const Verification: React.FC = () => {
                             >
                               Approve
                             </Button>
-                            <Button
-                              variant="outline"
+                            <DangerButton
                               size="sm"
                               disabled={busyId === record.id}
-                              style={{ color: 'var(--color-status-error)' }}
                               onClick={() => {
                                 setRejecting(record);
                                 setRejectReason('');
                               }}
                             >
                               Reject
-                            </Button>
+                            </DangerButton>
                           </>
                         ) : (
-                          <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-                            Reviewed
-                          </span>
+                          <span style={toneText.neutral}>Reviewed</span>
                         )}
                       </div>
                     </TableCell>
@@ -578,18 +475,35 @@ export const Verification: React.FC = () => {
 
                 {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell>
-                      <div
-                        style={{
-                          padding: '2rem',
-                          textAlign: 'center',
-                          color: 'var(--color-text-secondary)',
-                        }}
-                      >
-                        {records.length === 0
-                          ? 'No verifications match this filter.'
-                          : 'No loaded row matches the search. Clear it to see the full page.'}
-                      </div>
+                    <TableCell colSpan={7}>
+                      <EmptyState
+                        title={
+                          records.length === 0
+                            ? 'No application matches this filter'
+                            : 'No loaded row matches the search'
+                        }
+                        description={
+                          records.length === 0
+                            ? statusFilter === 'PENDING'
+                              ? 'The review queue is empty. Approved and rejected applications are under the other filters.'
+                              : 'Nothing matches this status and type combination.'
+                            : `${records.length} loaded, none matching the search. Search only covers loaded rows.`
+                        }
+                        action={
+                          records.length > 0 && appliedSearch !== '' ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSearch('');
+                                setAppliedSearch('');
+                              }}
+                            >
+                              Clear search
+                            </Button>
+                          ) : undefined
+                        }
+                      />
                     </TableCell>
                   </TableRow>
                 )}
@@ -599,9 +513,10 @@ export const Verification: React.FC = () => {
             {cursor && (
               <div
                 style={{
-                  padding: '1rem',
-                  textAlign: 'center',
-                  borderTop: '1px solid var(--color-border)',
+                  padding: '0.875rem',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  borderTop: '1px solid var(--color-rule)',
                 }}
               >
                 <Button
@@ -610,84 +525,57 @@ export const Verification: React.FC = () => {
                   disabled={loadingMore}
                   onClick={() => void load(false, cursor)}
                 >
-                  {loadingMore ? 'Loading…' : 'Load more'}
+                  {loadingMore ? 'Loading…' : `Load more (${records.length} shown)`}
                 </Button>
               </div>
             )}
           </>
         )}
-      </div>
+      </Card>
 
       {rejecting && (
-        <div
-          style={overlayStyle}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Reject application"
-          onClick={() => setRejecting(null)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: 'var(--color-surface-white)',
-              borderRadius: '0.5rem',
-              width: '100%',
-              maxWidth: '440px',
-              boxShadow: '0 20px 45px rgba(15,23,42,0.25)',
-            }}
-          >
-            <div
-              style={{
-                padding: '1.25rem 1.5rem',
-                borderBottom: '1px solid var(--color-border)',
-              }}
-            >
-              <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>Reject application</h2>
-              <p style={{ margin: '0.25rem 0 0', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
-                {rejecting.full_name ?? rejecting.email} is told the reason you give here, so say
-                what they can fix. Optional, but a rejection without one is a dead end.
-              </p>
-            </div>
-
-            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <textarea
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value.slice(0, 500))}
-                rows={3}
-                placeholder="e.g. The phone number on the application does not match the ID proof."
-                style={{ ...fieldStyle, resize: 'vertical' }}
-              />
-              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', textAlign: 'right' }}>
-                {rejectReason.length}/500
-              </div>
-            </div>
-
-            <div
-              style={{
-                padding: '0.875rem 1.5rem',
-                borderTop: '1px solid var(--color-border)',
-                display: 'flex',
-                justifyContent: 'flex-end',
-                gap: '0.5rem',
-              }}
-            >
-              <Button variant="secondary" size="sm" onClick={() => setRejecting(null)}>
+        <Modal
+          title="Reject application"
+          onClose={() => setRejecting(null)}
+          width={460}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setRejecting(null)}>
                 Cancel
               </Button>
               <Button
-                size="sm"
+                variant="danger"
                 disabled={busyId === rejecting.id}
-                style={{ backgroundColor: 'var(--color-status-error)' }}
                 onClick={() => void updateStatus(rejecting, 'REJECTED', rejectReason)}
               >
                 {busyId === rejecting.id ? 'Rejecting…' : 'Reject'}
               </Button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <p style={{ margin: '0 0 1rem', fontSize: 'var(--text-body)', color: 'var(--color-ink-muted)' }}>
+            {rejecting.full_name ?? rejecting.email} is told the reason given here, so say what they
+            can fix. The field is optional, but a rejection without one is a dead end for the person
+            on the other side.
+          </p>
+
+          <Field label="Reason" hint={`${rejectReason.length}/${REASON_LIMIT}`}>
+            {({ id, style }) => (
+              <textarea
+                id={id}
+                value={rejectReason}
+                maxLength={REASON_LIMIT}
+                onChange={(e) => setRejectReason(e.target.value)}
+                rows={3}
+                placeholder="e.g. The phone number on the application does not match the ID proof."
+                style={{ ...style, resize: 'vertical' }}
+              />
+            )}
+          </Field>
+        </Modal>
       )}
 
-      {detailId && <VerificationDrawer id={detailId} onClose={() => setDetailId(null)} />}
+      {detailId && <VerificationDialog id={detailId} onClose={() => setDetailId(null)} />}
     </div>
   );
 };

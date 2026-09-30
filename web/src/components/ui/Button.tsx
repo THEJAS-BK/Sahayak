@@ -1,65 +1,88 @@
 import React, { type ButtonHTMLAttributes } from 'react';
+import { toneStyles } from '../../lib/tone';
+
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
+export type ButtonSize = 'sm' | 'md';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
-  size?: 'sm' | 'md' | 'lg';
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  /**
+   * Renders the child with an icon, sized and spaced together. Every call site
+   * was hand-rolling `<UserCheck size={14} style={{marginRight: '0.375rem'}} />`.
+   */
+  icon?: React.ReactNode;
 }
+
+const sizeStyles: Record<ButtonSize, React.CSSProperties> = {
+  sm: { padding: '0.3125rem 0.625rem', fontSize: 'var(--text-body)' },
+  md: { padding: '0.4375rem 0.875rem', fontSize: 'var(--text-body)' },
+};
+
+const variantStyles: Record<ButtonVariant, React.CSSProperties> = {
+  primary: { background: 'var(--color-navy)', color: 'var(--color-ink-inverse)' },
+  secondary: { background: 'var(--color-sunken)', color: 'var(--color-ink)' },
+  outline: {
+    background: 'transparent',
+    border: '1px solid var(--color-rule-strong)',
+    color: 'var(--color-ink)',
+  },
+  ghost: { background: 'transparent', color: 'var(--color-ink-muted)' },
+  // Destructive actions were previously recoloured at each call site, which is
+  // how three different reds ended up in the verification flows.
+  danger: { background: 'var(--color-error-ink)', color: 'var(--color-ink-inverse)' },
+};
 
 export const Button: React.FC<ButtonProps> = ({
   children,
   variant = 'primary',
   size = 'md',
+  icon,
   style,
+  disabled,
   ...props
-}) => {
-  const baseStyles = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: '0.375rem',
-    fontWeight: 500,
-    cursor: 'pointer',
-    transition: 'background-color 0.2s',
-    border: 'none',
-  };
+}) => (
+  <button
+    disabled={disabled}
+    style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: icon ? '0.375rem' : 0,
+      borderRadius: 'var(--radius-control)',
+      fontFamily: 'inherit',
+      fontWeight: 500,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      border: '1px solid transparent',
+      opacity: disabled ? 0.55 : 1,
+      transition: 'background-color 0.15s, border-color 0.15s, color 0.15s',
+      ...sizeStyles[size],
+      ...variantStyles[variant],
+      ...style,
+    }}
+    {...props}
+  >
+    {icon}
+    {children}
+  </button>
+);
 
-  const sizeStyles = {
-    sm: { padding: '0.375rem 0.75rem', fontSize: '0.875rem' },
-    md: { padding: '0.5rem 1rem', fontSize: '1rem' },
-    lg: { padding: '0.75rem 1.5rem', fontSize: '1.125rem' },
-  };
-
-  const variantStyles = {
-    primary: {
-      backgroundColor: 'var(--color-primary-navy)',
-      color: 'var(--color-text-inverse)',
-    },
-    secondary: {
-      backgroundColor: '#E2E8F0',
-      color: 'var(--color-text-primary)',
-    },
-    outline: {
-      backgroundColor: 'transparent',
-      border: '1px solid var(--color-border)',
-      color: 'var(--color-text-primary)',
-    },
-    ghost: {
-      backgroundColor: 'transparent',
-      color: 'var(--color-text-secondary)',
-    }
-  };
-
+/**
+ * The outline of a control that removes something. Visually lighter than a
+ * `danger` button so a row of actions does not turn into a wall of red, but it
+ * reads as destructive in the one place a mis-click would be expensive.
+ */
+export const DangerButton: React.FC<Omit<ButtonProps, 'variant'>> = (props) => {
+  const { style, ...rest } = props;
   return (
-    <button
+    <Button
+      {...rest}
+      variant="outline"
       style={{
-        ...baseStyles,
-        ...sizeStyles[size],
-        ...variantStyles[variant],
+        borderColor: toneStyles.error.color,
+        color: toneStyles.error.color,
         ...style,
       }}
-      {...props}
-    >
-      {children}
-    </button>
+    />
   );
 };

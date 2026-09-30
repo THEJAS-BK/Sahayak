@@ -1,17 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { Bell, User } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { fetchCurrentUser, fetchPoliceOverview } from '../../api/client';
-import type { CurrentUser, PoliceOverview } from '../../api/types';
+import { Link, useLocation } from 'react-router-dom';
+import { fetchCurrentUser } from '../../api/client';
+import type { CurrentUser } from '../../api/types';
+import { formatClock } from '../../lib/format';
+import { titleForPath } from '../../lib/nav';
+import { useOverview } from '../../lib/useOverview';
 
 /**
- * The bell shows the real unattended work count from P-08, not a decorative
- * dot. A permanently-red badge that never means anything trains an officer to
- * ignore the one control that would tell them an SOS is waiting.
+ * The bar above every page, carrying three things:
+ *
+ * 1. Which screen this is. It used to sit empty across 60% of its width while
+ *    all thirteen pages repeated their own title underneath it.
+ * 2. How old the numbers are. The freshness stamp is now permanent rather than
+ *    a per-page flourish that three pages remembered and ten did not.
+ * 3. How much unattended work is waiting.
  */
 export const Header: React.FC = () => {
+  const { pathname } = useLocation();
+  const { overview, generatedAt, error } = useOverview();
   const [user, setUser] = useState<CurrentUser | null>(null);
-  const [overview, setOverview] = useState<PoliceOverview | null>(null);
+  const { title } = titleForPath(pathname);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,28 +37,12 @@ export const Header: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = () => {
-      fetchPoliceOverview()
-        .then((result) => {
-          if (!cancelled) setOverview(result);
-        })
-        .catch(() => {
-          // The badge is advisory. A failure here must not blank the header.
-        });
-    };
-    load();
-    const timer = setInterval(load, 60_000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, []);
-
+  // Real unattended work, not a decorative dot. A permanently-red badge that
+  // never means anything trains an officer to ignore the one control that would
+  // tell them an SOS is waiting.
   const attention = overview
     ? overview.emergencies_awaiting_review + overview.verifications_pending
-    : null;
+    : 0;
 
   const roleLabel =
     user?.role === 'police' ? 'Police officer' : user?.role ? user.role : 'Signed in';
@@ -57,41 +50,71 @@ export const Header: React.FC = () => {
   return (
     <header
       style={{
-        height: '64px',
         flexShrink: 0,
-        backgroundColor: 'var(--color-surface-white)',
-        borderBottom: '1px solid var(--color-border)',
+        background: 'var(--color-raised)',
+        borderBottom: '1px solid var(--color-rule)',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'flex-end',
-        padding: '0 2rem',
+        justifyContent: 'space-between',
+        gap: '1rem',
+        padding: '0 1.5rem',
+        minHeight: '3.5rem',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-        {attention !== null && attention > 0 && (
+      <h1
+        style={{
+          fontSize: 'var(--text-lead)',
+          fontWeight: 600,
+          letterSpacing: '-0.01em',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {title}
+      </h1>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+        {generatedAt && (
+          <span
+            // Announced when it changes, so a stale board is not a silent one.
+            aria-live="polite"
+            style={{
+              fontSize: 'var(--text-meta)',
+              color: error ? 'var(--color-warning-ink)' : 'var(--color-ink-muted)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {error ? 'Last update failed · ' : ''}
+            as of <span className="tnum">{formatClock(generatedAt)}</span>
+          </span>
+        )}
+
+        {attention > 0 && (
           <Link
             to="/emergencies"
             title={`${attention} item${attention === 1 ? '' : 's'} waiting for review`}
             style={{
               position: 'relative',
               display: 'inline-flex',
-              color: 'var(--color-text-secondary)',
+              color: 'var(--color-ink-muted)',
               lineHeight: 0,
             }}
           >
-            <Bell size={20} />
+            <Bell size={19} />
             <span
+              className="tnum"
               style={{
                 position: 'absolute',
-                top: '-4px',
-                right: '-6px',
+                top: '-5px',
+                right: '-7px',
                 minWidth: '16px',
                 height: '16px',
                 padding: '0 4px',
-                borderRadius: '999px',
-                backgroundColor: 'var(--color-status-error)',
-                color: '#fff',
-                fontSize: '0.625rem',
+                borderRadius: 'var(--radius-pill)',
+                background: 'var(--color-error-ink)',
+                color: 'var(--color-ink-inverse)',
+                fontSize: 'var(--text-label)',
                 fontWeight: 700,
                 lineHeight: '16px',
                 textAlign: 'center',
@@ -102,38 +125,33 @@ export const Header: React.FC = () => {
           </Link>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
           <div style={{ textAlign: 'right' }}>
-            <div
-              style={{
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                color: 'var(--color-text-primary)',
-              }}
-            >
+            <div style={{ fontSize: 'var(--text-body)', fontWeight: 600, lineHeight: 1.2 }}>
               {user?.email ?? 'Police Officer'}
             </div>
             {/* Was a hardcoded "Station HQ". `/me` carries no station, so the
                 role is the only honest thing to put here. */}
-            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', textTransform: 'capitalize' }}>
+            <div style={{ fontSize: 'var(--text-label)', color: 'var(--color-ink-muted)' }}>
               {roleLabel}
             </div>
           </div>
 
           <div
+            aria-hidden="true"
             style={{
-              width: '36px',
-              height: '36px',
+              width: '32px',
+              height: '32px',
               borderRadius: '50%',
-              backgroundColor: '#E2E8F0',
+              background: 'var(--color-sunken)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: 'var(--color-text-secondary)',
+              color: 'var(--color-ink-muted)',
               flexShrink: 0,
             }}
           >
-            <User size={18} />
+            <User size={17} />
           </div>
         </div>
       </div>

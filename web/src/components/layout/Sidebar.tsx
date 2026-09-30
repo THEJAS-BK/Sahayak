@@ -1,40 +1,8 @@
 import React from 'react';
-import {
-  Activity,
-  AlertTriangle,
-  LayoutDashboard,
-  ListChecks,
-  LogOut,
-  Map as MapIcon,
-  ScrollText,
-  ShieldCheck,
-  Users,
-} from 'lucide-react';
+import { LogOut, ShieldCheck } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { clearSession, logout } from '../../api/client';
-
-/**
- * `exact` matters for `/`: without it React Router treats the dashboard as a
- * match for every sibling path and highlights two items at once.
- */
-const menuItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/', end: true },
-  { icon: ListChecks, label: 'Requests', path: '/requests' },
-  { icon: Activity, label: 'Monitoring', path: '/monitoring' },
-  { icon: AlertTriangle, label: 'Emergencies', path: '/emergencies' },
-  { icon: ShieldCheck, label: 'Verification', path: '/verification' },
-  { icon: Users, label: 'Seniors', path: '/seniors' },
-  { icon: Users, label: 'Volunteers', path: '/volunteers' },
-  { icon: MapIcon, label: 'Map', path: '/map' },
-  { icon: ScrollText, label: 'Audit Logs', path: '/audit-logs' },
-];
-
-/** Sections, purely for grouping. Every item is a real, wired screen. */
-const groups = [
-  { label: 'Operations', items: menuItems.slice(0, 4) },
-  { label: 'People', items: menuItems.slice(4, 7) },
-  { label: 'Oversight', items: menuItems.slice(7) },
-];
+import { navGroups } from '../../lib/nav';
 
 export const Sidebar: React.FC = () => {
   const navigate = useNavigate();
@@ -56,57 +24,61 @@ export const Sidebar: React.FC = () => {
 
   return (
     <aside
+      className="on-navy"
       style={{
-        width: '250px',
+        width: '232px',
         flexShrink: 0,
-        backgroundColor: 'var(--color-primary-navy)',
-        color: 'var(--color-text-inverse)',
+        background: 'var(--color-navy)',
+        color: 'var(--color-ink-inverse)',
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
         minHeight: 0,
       }}
     >
-      <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-        <h1
+      <div style={{ padding: '1.125rem 1.25rem', borderBottom: '1px solid var(--color-navy-rule)' }}>
+        <p
           style={{
-            fontSize: '1.125rem',
+            fontSize: 'var(--text-lead)',
             fontWeight: 700,
-            margin: 0,
+            letterSpacing: '-0.015em',
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem',
           }}
         >
-          <ShieldCheck size={22} />
-          Sahayak Admin
-        </h1>
-        <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#94A3B8' }}>
+          <ShieldCheck size={20} />
+          Sahayak
+        </p>
+        <p style={{ margin: '0.125rem 0 0', fontSize: 'var(--text-meta)', color: 'var(--color-ink-on-navy)' }}>
           Police operations console
         </p>
       </div>
 
       <nav
+        aria-label="Sections"
         style={{
           flex: 1,
           minHeight: 0,
           overflowY: 'auto',
-          padding: '1rem 0.75rem',
+          padding: '0.875rem 0.625rem',
           display: 'flex',
           flexDirection: 'column',
-          gap: '1.25rem',
+          gap: '1rem',
         }}
       >
-        {groups.map((group) => (
-          <div key={group.label} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        {navGroups.map((group) => (
+          <div key={group.label} style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem' }}>
+            {/*
+              Sentence case, not the old 11px tracked-out capitals. The group
+              label is a caption on a list of nine items, and at 11px on navy it
+              also fell below the contrast floor.
+            */}
             <span
               style={{
-                padding: '0 0.75rem',
-                fontSize: '0.6875rem',
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-                color: '#64748B',
+                padding: '0 0.5rem 0.25rem',
+                fontSize: 'var(--text-caption)',
+                color: 'var(--color-ink-on-navy)',
               }}
             >
               {group.label}
@@ -119,19 +91,20 @@ export const Sidebar: React.FC = () => {
                 style={({ isActive }) => ({
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.75rem',
-                  padding: '0.55rem 0.75rem',
-                  borderRadius: '0.375rem',
-                  backgroundColor: isActive ? 'var(--color-primary-navy-hover)' : 'transparent',
-                  color: isActive ? '#FFFFFF' : '#94A3B8',
-                  cursor: 'pointer',
-                  textDecoration: 'none',
-                  fontSize: '0.9375rem',
-                  fontWeight: isActive ? 600 : 500,
+                  gap: '0.625rem',
+                  padding: '0.4375rem 0.5rem',
+                  borderRadius: 'var(--radius-control)',
+                  // A left rule rather than a filled block. The fill made the
+                  // active row look like a button sitting on a darker button.
+                  borderLeft: `2px solid ${isActive ? 'var(--color-ink-inverse)' : 'transparent'}`,
+                  background: isActive ? 'var(--color-navy-raised)' : 'transparent',
+                  color: isActive ? 'var(--color-ink-inverse)' : 'var(--color-ink-on-navy)',
+                  fontSize: 'var(--text-body)',
+                  fontWeight: isActive ? 600 : 400,
                   transition: 'background-color 0.15s, color 0.15s',
                 })}
               >
-                <item.icon size={18} style={{ flexShrink: 0 }} />
+                <item.icon size={17} aria-hidden="true" style={{ flexShrink: 0 }} />
                 {item.label}
               </NavLink>
             ))}
@@ -139,33 +112,29 @@ export const Sidebar: React.FC = () => {
         ))}
       </nav>
 
-      <div
-        style={{
-          padding: '0.75rem',
-          borderTop: '1px solid rgba(255,255,255,0.1)',
-        }}
-      >
+      <div style={{ padding: '0.625rem', borderTop: '1px solid var(--color-navy-rule)' }}>
         <button
+          type="button"
           onClick={() => void handleLogout()}
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '0.75rem',
-            padding: '0.625rem 0.75rem',
-            color: '#94A3B8',
+            gap: '0.625rem',
+            padding: '0.4375rem 0.5rem',
+            color: 'var(--color-ink-on-navy)',
             background: 'none',
             border: 'none',
-            borderRadius: '0.375rem',
+            borderRadius: 'var(--radius-control)',
             cursor: 'pointer',
-            fontWeight: 500,
+            fontWeight: 400,
             fontFamily: 'inherit',
             textAlign: 'left',
-            fontSize: '0.9375rem',
+            fontSize: 'var(--text-body)',
             width: '100%',
           }}
         >
-          <LogOut size={18} style={{ flexShrink: 0 }} />
-          Logout
+          <LogOut size={17} aria-hidden="true" style={{ flexShrink: 0 }} />
+          Log out
         </button>
       </div>
     </aside>
