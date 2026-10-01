@@ -82,7 +82,9 @@ export const AuditLogs: React.FC = () => {
       {error && <Alert onRetry={() => void load(logs.length === 0)}>{error}</Alert>}
 
       <Card flush>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--color-rule)' }}>
+        {/* The 0.625rem gutter is the dense table cell padding, so the title,
+            the filters and the first column of the table share one left edge. */}
+        <div style={{ padding: '0.875rem 0.625rem', borderBottom: '1px solid var(--color-rule)' }}>
           <Section
             title="Recorded changes"
             description="Every recorded change, newest first. Entries with no actor were made by a background job."
