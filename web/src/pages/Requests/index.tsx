@@ -280,7 +280,7 @@ export const Requests: React.FC = () => {
                       {notifiedCount(req) === 0 && canAssign(req) && (
                         <div
                           title="Dispatch found no volunteer in range. Nobody was notified — assign one by hand."
-                          style={{ marginTop: '0.25rem', fontSize: 'var(--text-label)', ...toneText.error }}
+                          style={{ marginTop: '0.25rem', fontSize: 'var(--text-meta)', ...toneText.error }}
                         >
                           Nobody notified
                         </div>

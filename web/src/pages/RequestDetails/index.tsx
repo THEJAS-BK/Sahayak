@@ -207,7 +207,7 @@ export const RequestDetails: React.FC = () => {
 
         <Card>
           <Section title="Request" unbordered>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <DetailRow label="Category">{categoryLabel(request.category)}</DetailRow>
               <DetailRow label="Description">{request.description}</DetailRow>
               {extras.map(([label, value]) => (
@@ -240,7 +240,7 @@ export const RequestDetails: React.FC = () => {
               href={request.image_url}
               target="_blank"
               rel="noreferrer"
-              style={{ display: 'inline-block', color: 'var(--color-ink-muted)', fontSize: 'var(--text-label)' }}
+              style={{ display: 'inline-block', color: 'var(--color-ink-muted)', fontSize: 'var(--text-meta)' }}
             >
               <img
                 src={request.image_url}

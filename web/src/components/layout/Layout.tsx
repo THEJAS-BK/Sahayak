@@ -18,11 +18,7 @@ export const Layout: React.FC = () => {
 
   return (
     <div className="app-shell" style={{ display: 'flex', width: '100%', overflow: 'hidden' }}>
-      <a
-        href="#main"
-        className="sr-only"
-        style={{ position: 'absolute', left: '0.5rem', top: '0.5rem', zIndex: 200 }}
-      >
+      <a href="#main" className="skip-link">
         Skip to content
       </a>
 
@@ -39,6 +35,9 @@ export const Layout: React.FC = () => {
         {!immersive && <Header />}
         <main
           id="main"
+          // Focusable so the skip link relocates the keyboard cursor and not
+          // just the scroll position. -1 keeps it out of the tab order.
+          tabIndex={-1}
           style={{
             flex: 1,
             minHeight: 0,

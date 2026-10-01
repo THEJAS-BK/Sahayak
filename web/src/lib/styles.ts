@@ -21,7 +21,10 @@ export const FOCUS_RING =
 export const control: React.CSSProperties = {
   padding: '0.4375rem 0.625rem',
   borderRadius: 'var(--radius-control)',
-  border: '1px solid var(--color-rule)',
+  // The control rule, not the decorative one. This border is what tells an
+  // officer the field exists and where to click; at the old 1.30:1 it was
+  // invisible to anyone with low vision.
+  border: '1px solid var(--color-control-rule)',
   background: 'var(--color-raised)',
   color: 'var(--color-ink)',
   fontFamily: 'inherit',

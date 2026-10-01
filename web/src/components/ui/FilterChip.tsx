@@ -32,7 +32,7 @@ export const FilterChip: React.FC<FilterChipProps> = ({ label, count, active, on
       fontWeight: active ? 600 : 400,
       color: active ? 'var(--color-ink-inverse)' : 'var(--color-ink-muted)',
       background: active ? 'var(--color-navy)' : 'var(--color-raised)',
-      borderColor: active ? 'var(--color-navy)' : 'var(--color-rule)',
+      borderColor: active ? 'var(--color-navy)' : 'var(--color-control-rule)',
     }}
   >
     {group && <span className="sr-only">{group}: </span>}
@@ -41,7 +41,7 @@ export const FilterChip: React.FC<FilterChipProps> = ({ label, count, active, on
       <span
         className="tnum"
         style={{
-          fontSize: 'var(--text-label)',
+          fontSize: 'var(--text-meta)',
           color: active ? 'var(--color-ink-on-navy)' : 'var(--color-ink-muted)',
         }}
       >

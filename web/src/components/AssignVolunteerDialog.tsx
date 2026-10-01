@@ -166,12 +166,12 @@ export const AssignVolunteerDialog: React.FC<Props> = ({ request, onClose, onAss
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: 0 }}>
                 <span style={{ fontWeight: 600 }}>{volunteer.full_name ?? volunteer.email}</span>
-                <span style={{ fontSize: 'var(--text-label)', color: 'var(--color-ink-muted)' }}>
+                <span style={{ fontSize: 'var(--text-meta)', color: 'var(--color-ink-muted)' }}>
                   {[volunteer.phone_number, volunteer.organization].filter(Boolean).join(' · ') ||
                     volunteer.email}
                 </span>
                 {blocked ? (
-                  <span style={{ fontSize: 'var(--text-label)', color: 'var(--color-ink-muted)' }}>
+                  <span style={{ fontSize: 'var(--text-meta)', color: 'var(--color-ink-muted)' }}>
                     {blocked}
                   </span>
                 ) : (

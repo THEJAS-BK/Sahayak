@@ -116,7 +116,7 @@ export const Login: React.FC = () => {
             Sahayak Admin
           </h1>
         </div>
-        <p style={{ ...toneText.neutral, fontSize: 'var(--text-body)', margin: '0.375rem 0 1.5rem 0' }}>
+        <p style={{ ...toneText.neutral, fontSize: 'var(--text-body)', margin: '0.375rem 0 1.5rem' }}>
           Police verification portal
         </p>
 
@@ -193,7 +193,7 @@ export const Login: React.FC = () => {
             )}
 
             {DEV_OTP_CODE && (
-              <p style={{ ...toneText.neutral, fontSize: 'var(--text-label)', margin: 0 }}>
+              <p style={{ ...toneText.neutral, fontSize: 'var(--text-meta)', margin: 0 }}>
                 Dev build — the local OTP is <span className="mono">{DEV_OTP_CODE}</span>.
               </p>
             )}
@@ -231,7 +231,7 @@ export const Login: React.FC = () => {
             <Button type="submit" disabled={busy || !tokenValue.trim()} style={{ width: '100%' }}>
               Save token
             </Button>
-            <p style={{ ...toneText.neutral, fontSize: 'var(--text-label)', margin: 0 }}>
+            <p style={{ ...toneText.neutral, fontSize: 'var(--text-meta)', margin: 0 }}>
               For local testing only. Anyone with a police token already has console access, so this
               never bypasses a check.
             </p>

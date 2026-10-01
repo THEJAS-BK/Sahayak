@@ -159,7 +159,7 @@ export const Seniors: React.FC = () => {
                       >
                         {senior.full_name ?? 'Profile incomplete'}
                       </Link>
-                      <div style={{ ...toneText.neutral, fontSize: 'var(--text-label)' }}>
+                      <div style={{ ...toneText.neutral, fontSize: 'var(--text-meta)' }}>
                         {senior.email}
                       </div>
                     </TableCell>

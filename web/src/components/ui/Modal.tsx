@@ -110,11 +110,14 @@ export const Modal: React.FC<ModalProps> = ({ title, onClose, children, footer, 
             aria-label="Close"
             style={{
               display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minWidth: '1.5rem',
+              minHeight: '1.5rem',
               background: 'none',
               border: 'none',
               cursor: 'pointer',
               color: 'var(--color-ink-muted)',
-              padding: '0.25rem',
             }}
           >
             <X size={18} />

@@ -70,8 +70,19 @@ export const TableRow: React.FC<{
   onClick?: () => void;
 }> = ({ children, style, onClick }) => {
   const density = React.useContext(densityContext);
+  // Row state follows the keyboard too. The hover background used to be the only
+  // cue that a scanning eye had landed on a row, and it was wired to
+  // onMouseEnter/onMouseLeave, so arrowing through the lead link moved nothing.
+  // CSS `:hover` also covers the synthetic hover a touch screen emits, which the
+  // JS handlers did not.
+  const [hovered, setHovered] = React.useState(false);
+  // Only a row that navigates gets the hover treatment; a static row that lit up
+  // on hover would be promising something it will not do.
+  const active = Boolean(onClick) && hovered;
+
   return (
     <tr
+      className="sahayak-row"
       onClick={onClick}
       tabIndex={-1}
       style={{
@@ -80,15 +91,11 @@ export const TableRow: React.FC<{
         cursor: onClick ? 'pointer' : undefined,
         // Row hover is what tells a scanning eye which row it is over. It used
         // to have no state at all, so a wide table read as one grey block.
-        background: 'var(--color-raised)',
+        background: active ? 'var(--color-canvas)' : 'var(--color-raised)',
         ...style,
       }}
-      onMouseEnter={(e) => {
-        if (onClick) e.currentTarget.style.background = 'var(--color-canvas)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'var(--color-raised)';
-      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       {children}
     </tr>

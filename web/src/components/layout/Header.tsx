@@ -93,28 +93,39 @@ export const Header: React.FC = () => {
         {attention > 0 && (
           <Link
             to="/emergencies"
+            // A `title` is a tooltip, not an accessible name, and the badge
+            // below contributes only a bare "9+". Without this the control is
+            // announced as a number with no indication of what it counts.
+            aria-label={`${attention} ${attention === 1 ? 'item' : 'items'} waiting for review. Open emergencies.`}
             title={`${attention} item${attention === 1 ? '' : 's'} waiting for review`}
             style={{
               position: 'relative',
               display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              // 24px minimum target (WCAG 2.5.8); the bare 19px icon was under it.
+              minWidth: '1.5rem',
+              minHeight: '1.5rem',
               color: 'var(--color-ink-muted)',
               lineHeight: 0,
+              borderRadius: 'var(--radius-control)',
             }}
           >
-            <Bell size={19} />
+            <Bell size={19} aria-hidden="true" />
             <span
               className="tnum"
+              aria-hidden="true"
               style={{
                 position: 'absolute',
-                top: '-5px',
-                right: '-7px',
+                top: '-3px',
+                right: '-3px',
                 minWidth: '16px',
                 height: '16px',
                 padding: '0 4px',
                 borderRadius: 'var(--radius-pill)',
                 background: 'var(--color-error-ink)',
                 color: 'var(--color-ink-inverse)',
-                fontSize: 'var(--text-label)',
+                fontSize: 'var(--text-meta)',
                 fontWeight: 700,
                 lineHeight: '16px',
                 textAlign: 'center',
@@ -132,7 +143,7 @@ export const Header: React.FC = () => {
             </div>
             {/* Was a hardcoded "Station HQ". `/me` carries no station, so the
                 role is the only honest thing to put here. */}
-            <div style={{ fontSize: 'var(--text-label)', color: 'var(--color-ink-muted)' }}>
+            <div style={{ fontSize: 'var(--text-meta)', color: 'var(--color-ink-muted)' }}>
               {roleLabel}
             </div>
           </div>

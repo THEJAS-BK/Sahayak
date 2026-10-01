@@ -24,9 +24,23 @@
   --color-sunken: #eef1f5; /* inset wells, table header rules, code */
 
   /* Rules. `--color-rule` is a shade darker than the old #E2E8F0, which was
-     nearly invisible as a 1px hairline on white. */
+     nearly invisible as a 1px hairline on white. It separates content, so it is
+     not held to the contrast floor — see `--color-control-rule` for the one
+     that is. */
   --color-rule: #dde2e9;
   --color-rule-strong: #c3cbd6;
+
+  /*
+   * The boundary of an interactive control. WCAG 1.4.11 asks 3:1 for the edge
+   * that tells you a thing can be focused, and `--color-rule` measures 1.30:1
+   * on white — so until now every input, select and outline button in the app
+   * had a border a low-vision officer could not actually see.
+   *
+   * Deliberately a true neutral rather than a cool grey: it sits next to the ink
+   * of the control it frames, and a hue in that role would read as a state.
+   * 4.54:1 on white and 4.01:1 in a sunken well.
+   */
+  --color-control-rule: #767676;
 
   /* Ink. */
   --color-ink: #131a26;
@@ -60,7 +74,11 @@
      ten undocumented rem values across the pages. */
   --text-label: 0.6875rem; /* 11px — uppercase state labels only */
   --text-label--line-height: 1rem;
-  --text-meta: 0.75rem; /* 12px — supporting meta */
+  --text-meta: 0.75rem; /* 12px — supporting meta, hints, chip counts.
+                           Also the floor for anything lowercase: 11px *meta*
+                           read as 10 of the call sites were using --text-label
+                           for, which is below comfortable size for a value an
+                           officer has to parse, not just notice. */
   --text-meta--line-height: 1.125rem;
   --text-caption: 0.8125rem; /* 13px — form labels, dense table cells */
   --text-caption--line-height: 1.25rem;
@@ -113,10 +131,27 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+/*
+ * This reset MUST live in `@layer base`.
+ *
+ * It used to sit here unlayered, which looks harmless but is a cascade trap.
+ * Tailwind v4 emits its utilities into `@layer utilities`, and the CSS cascade
+ * ranks *unlayered* rules above every layer regardless of specificity. So a
+ * `* { padding: 0 }` out here beats `.px-3` in there — specificity is never even
+ * consulted. Every padding/margin utility in the app silently collapsed to
+ * zero, and it presented as "the component has no styling" rather than as a
+ * cascade bug: the rules were emitted into the stylesheet, they just could not
+ * win. Layers are the whole reason to put a reset in `base`.
+ *
+ * Tailwind's own preflight already resets margin and padding, so this is
+ * belt-and-braces; keep it layered either way.
+ */
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
 }
 
 body {
@@ -145,8 +180,11 @@ button {
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
-  /* A hairline control needs the ring drawn outside the border, not on it. */
-  border-radius: 2px;
+  /* No `border-radius` here. An outline already follows the element's own
+     radius, so declaring one *replaced* it — focusing a button snapped its
+     6px corners to square 2px ones. Only elements with a square radius of
+     their own (the bare `<a>` in a popup) need rounding, and they are the
+     ones `outline` cannot infer. */
 }
 
 /* On the navy sidebar the ink ring would be invisible against the background. */
@@ -182,6 +220,52 @@ button {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border-width: 0;
+}
+
+/*
+ * The skip link. It was `class="sr-only"` with inline offsets, which cancelled
+ * the one behaviour that mattered: `sr-only` clips to 1px and `overflow:hidden`
+ * stays applied on focus, so a keyboard user's very first Tab stopped on a link
+ * they could not see and could not see focus on. Hidden by default, revealed
+ * by :focus.
+ */
+.skip-link {
+  position: absolute;
+  left: 0.5rem;
+  top: 0.5rem;
+  z-index: 200;
+  padding: 0.5rem 0.875rem;
+  border-radius: var(--radius-control);
+  background: var(--color-navy);
+  color: var(--color-ink-inverse);
+  font-size: var(--text-body);
+  font-weight: 600;
+  box-shadow: var(--shadow-overlay);
+  transform: translateY(-200%);
+  transition: transform 0.15s;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/* `<main>` is focusable only as a skip-link target, so the ring that every other
+   focusable element gets would draw a box around the entire page. The link
+   itself already announced where focus went. */
+main:focus,
+main:focus-visible {
+  outline: none;
+}
+
+/*
+ * Keyboard parity for the table row hover. The lead cell holds a real link, so
+ * this is the state that tells a keyboard user which row they are on. `.row`
+ * is set only on rows that navigate, so a static row does not light up.
+ */
+.sahayak-row:focus-within {
+  background: var(--color-canvas);
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
 }
 
 /* The app shell is a fixed-height frame; pages scroll inside <main>, not the body. */
@@ -248,26 +332,169 @@ button {
 
 /*
  * A pin is a positioned wrapper so the pulse ring can scale from the centre
- * without distorting the solid dot, and so both share one hit box.
+ * without distorting the teardrop, and so both share one hit box.
+ *
+ * The shape itself is inline SVG in `markerIcon`, not CSS: it has to survive
+ * being injected into Leaflet's marker pane, where inheritance is not something
+ * to rely on.
  */
 .sahayak-pin {
   position: relative;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 34px;
+  filter: drop-shadow(0 1px 3px rgba(19, 26, 38, 0.45));
+  transition: transform 0.12s ease;
 }
 
+/* Lift on hover, so the marker under the cursor is findable among its neighbours. */
+.sahayak-pin:hover {
+  transform: translateY(-2px) scale(1.06);
+}
+
+/*
+ * The pulse is a ring around the pin's head, not the pin itself. Scaled to 2.6×
+ * and faded out, applied to the whole glyph it would dissolve the one thing that
+ * identifies the record's kind.
+ */
 .sahayak-pin .sahayak-marker-pulse {
   position: absolute;
-  inset: 0;
+  top: 1px;
+  left: 1px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
 }
 
-.sahayak-pin-dot {
-  position: absolute;
-  inset: 0;
+/*
+ * The selected pin takes an ink ring. A marker that is merely *under the cursor*
+ * is not the same thing as the one whose record is open in the side panel, and an
+ * officer who has paged the list needs to see which pin that is without opening
+ * every popup in turn.
+ */
+.sahayak-pin.is-selected svg {
+  filter: drop-shadow(0 0 0 var(--color-navy));
+}
+
+.sahayak-pin.is-selected {
+  z-index: 1;
+}
+
+.sahayak-pin.is-selected path {
+  stroke: var(--color-navy);
+  stroke-width: 3;
+}
+
+/*
+ * A cluster, drawn as a ring rather than a filled circle so it reads as a bundle
+ * of pins gathered at one point instead of a single very important pin. Sized by
+ * the count (set inline as `--sahayak-cluster-size`) so a group holding 40
+ * records reads as bigger than one holding 3, and coloured by the most urgent
+ * member, so an SOS buried in a cluster of routine requests still tints the
+ * group red.
+ */
+.sahayak-cluster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--sahayak-cluster-size, 2.5rem);
+  height: var(--sahayak-cluster-size, 2.5rem);
   border-radius: 50%;
-  border: 3px solid #fff;
-  box-shadow: 0 1px 4px rgba(19, 26, 38, 0.45);
+  background: transparent;
+  border: 4px solid var(--sahayak-cluster-color, var(--color-navy));
+  box-shadow:
+    0 0 0 2px #fff,
+    0 1px 6px rgba(19, 26, 38, 0.45);
+  color: var(--sahayak-cluster-color, var(--color-navy));
+  font-size: var(--text-meta);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  transition: transform 0.12s ease;
+}
+
+.sahayak-cluster:hover {
+  transform: scale(1.08);
+}
+
+/*
+ * The hover summary. Leaflet's default tooltip is a dark floating label with a
+ * triangle, which fights the paper-and-ink palette and hides the tile under it.
+ * This is a small light card instead, matching the popups and the side panel.
+ */
+.leaflet-container .leaflet-tooltip {
+  background: var(--color-raised);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-raised);
+  color: var(--color-ink);
+  padding: 0;
+  margin: 0;
+}
+
+.leaflet-container .leaflet-tooltip::before {
+  display: none;
+}
+
+.sahayak-tooltip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.375rem 0.5rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.sahayak-tooltip-name {
+  font-size: var(--text-body);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.sahayak-tooltip-detail {
+  font-size: var(--text-meta);
+  line-height: 1.25;
+  color: var(--color-ink-muted);
+}
+
+/*
+ * Scrolls, but with no scrollbar drawn.
+ *
+ * Used where a scroll container sits inside a floating panel on top of a map:
+ * a chunky platform scrollbar floating over the tiles reads as part of the map
+ * chrome, and two of them stacked in one panel reads as a layout mistake.
+ *
+ * This hides the scrollbar only — `scrollbar-width: none` plus the WebKit
+ * pseudo-element — and leaves scrolling itself completely intact for the wheel,
+ * trackpad, keyboard and touch. It is deliberately NOT `overflow: hidden`:
+ * content that cannot be reached is worse than an ugly scrollbar, and the
+ * record list in the map's filter panel holds up to 200 rows.
+ *
+ * Hiding the bar removes the only standing cue that a region scrolls, so a
+ * container using this needs another affordance. The map panel pairs it with a
+ * bottom fade, and a container that can scroll must stay keyboard-reachable
+ * (`tabIndex={0}` plus a label) or its extra content becomes mouse-only.
+ */
+.sahayak-scroll-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sahayak-scroll-hidden::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/*
+ * The cue that replaces the scrollbar: the last row fades out under it, so the
+ * list reads as continuing past the panel edge. Anchored to the container
+ * rather than the content, so it does not travel with the scroll.
+ *
+ * Safe on a short list — the mask fades empty space below the final row, so it
+ * shows nothing when there is nothing below.
+ */
+.sahayak-scroll-fade-end {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.25rem), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 2.25rem), transparent 100%);
 }
 
 /* Wins over Leaflet's own .leaflet-container rules, which are bundled after this file. */

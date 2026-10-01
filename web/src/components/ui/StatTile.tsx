@@ -58,7 +58,7 @@ export const StatTile: React.FC<StatTileProps> = ({ label, value, hint, tone = '
         {value}
       </span>
       {hint && (
-        <span style={{ fontSize: 'var(--text-label)', color: 'var(--color-ink-muted)' }}>{hint}</span>
+        <span style={{ fontSize: 'var(--text-meta)', color: 'var(--color-ink-muted)' }}>{hint}</span>
       )}
     </>
   );
