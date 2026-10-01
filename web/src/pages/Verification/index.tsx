@@ -170,7 +170,7 @@ const VerificationDialog: React.FC<{ id: string; onClose: () => void }> = ({ id,
                 ))}
               </dl>
             )}
-            <p style={{ margin: '1rem 0 0', fontSize: 'var(--text-label)', ...toneText.neutral }}>
+            <p style={{ margin: '1rem 0 0', fontSize: 'var(--text-meta)', ...toneText.neutral }}>
               Aadhaar is collected for registration but is never displayed here.
             </p>
           </Section>
@@ -375,9 +375,7 @@ export const Verification: React.FC = () => {
         </div>
 
         {loading && records.length === 0 ? (
-          <div style={{ padding: '0.5rem 0' }}>
-            <SkeletonTable columns={7} rows={8} />
-          </div>
+          <SkeletonTable columns={7} rows={8} />
         ) : (
           <>
             <Table density="dense" stickyHeader>
@@ -410,7 +408,7 @@ export const Verification: React.FC = () => {
                       <span style={{ fontWeight: 600 }}>
                         {record.full_name ?? 'Name not provided'}
                       </span>
-                      <div style={{ ...toneText.neutral, fontSize: 'var(--text-label)' }}>
+                      <div style={{ ...toneText.neutral, fontSize: 'var(--text-meta)' }}>
                         {record.email}
                       </div>
                     </TableCell>

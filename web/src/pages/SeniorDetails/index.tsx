@@ -101,8 +101,11 @@ export const SeniorDetails: React.FC = () => {
 
   return (
     <div style={pageStack}>
+      {/* Outside the heading column, so the gap under the back link is the
+          pageStack rhythm (1.5rem) rather than the 0.5rem that pairs the
+          title with its badges. RequestDetails already works this way. */}
+      {backLink}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        {backLink}
         <h1 style={{ fontSize: 'var(--text-title)', fontWeight: 700, margin: 0 }}>
           {senior.full_name ?? 'Profile incomplete'}
         </h1>

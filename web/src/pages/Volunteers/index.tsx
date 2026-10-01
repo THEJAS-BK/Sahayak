@@ -153,7 +153,7 @@ export const Volunteers: React.FC = () => {
                     >
                       {volunteer.full_name ?? volunteer.email}
                     </Link>
-                    <div style={{ ...toneText.neutral, fontSize: 'var(--text-label)' }}>
+                    <div style={{ ...toneText.neutral, fontSize: 'var(--text-meta)' }}>
                       {volunteer.email}
                     </div>
                   </TableCell>

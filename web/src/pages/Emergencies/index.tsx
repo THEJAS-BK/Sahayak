@@ -166,7 +166,7 @@ export const Emergencies: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       <span style={{ fontWeight: 600 }}>{event.senior.full_name ?? 'Name not provided'}</span>
-                      <div style={{ ...toneText.neutral, fontSize: 'var(--text-label)' }}>
+                      <div style={{ ...toneText.neutral, fontSize: 'var(--text-meta)' }}>
                         {event.senior.email}
                       </div>
                     </TableCell>

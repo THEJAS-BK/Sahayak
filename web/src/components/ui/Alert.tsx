@@ -86,6 +86,7 @@ export const Alert: React.FC<AlertProps> = ({
             onClick={onRetry}
             style={{
               padding: '0.25rem 0.5rem',
+              minHeight: '1.5rem',
               borderRadius: 'var(--radius-control)',
               border: `1px solid ${colors.color}`,
               background: 'none',
@@ -106,11 +107,16 @@ export const Alert: React.FC<AlertProps> = ({
             aria-label="Dismiss"
             style={{
               display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              // 24px minimum target (WCAG 2.5.8). The 16px icon alone is 20px
+              // including its padding, which is under the floor.
+              minWidth: '1.5rem',
+              minHeight: '1.5rem',
               background: 'none',
               border: 'none',
               cursor: 'pointer',
               color: colors.color,
-              padding: '0.125rem',
             }}
           >
             <X size={16} />

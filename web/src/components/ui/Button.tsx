@@ -24,7 +24,8 @@ const variantStyles: Record<ButtonVariant, React.CSSProperties> = {
   secondary: { background: 'var(--color-sunken)', color: 'var(--color-ink)' },
   outline: {
     background: 'transparent',
-    border: '1px solid var(--color-rule-strong)',
+    // Same reasoning as the form control: this border is the affordance.
+    border: '1px solid var(--color-control-rule)',
     color: 'var(--color-ink)',
   },
   ghost: { background: 'transparent', color: 'var(--color-ink-muted)' },

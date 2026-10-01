@@ -105,7 +105,7 @@ export const AuditLogs: React.FC = () => {
                 e.preventDefault();
                 setAppliedAction(action.trim());
               }}
-              style={{ display: 'flex', gap: '0.875rem', alignItems: 'flex-end', flexWrap: 'wrap' }}
+              style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}
             >
               {/* `Field` pairs the label with the control by id; the old markup
                   had a visible label and an unlabelled select. */}
@@ -198,7 +198,7 @@ export const AuditLogs: React.FC = () => {
                     <TableCell>
                       {log.entity_type.replace(/_/g, ' ')}
                       {log.entity_id && (
-                        <div className="mono" style={{ ...toneText.neutral, fontSize: 'var(--text-label)' }}>
+                        <div className="mono" style={{ ...toneText.neutral, fontSize: 'var(--text-meta)' }}>
                           {shortId(log.entity_id)}
                         </div>
                       )}

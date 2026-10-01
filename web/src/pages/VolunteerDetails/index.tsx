@@ -101,8 +101,11 @@ export const VolunteerDetails: React.FC = () => {
 
   return (
     <div style={pageStack}>
+      {/* Outside the heading column, so the gap under the back link is the
+          pageStack rhythm (1.5rem) rather than the 0.5rem that pairs the
+          title with its badges. RequestDetails already works this way. */}
+      {backLink}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        {backLink}
         <h1 style={{ fontSize: 'var(--text-title)', fontWeight: 700, margin: 0 }}>
           {volunteer.full_name ?? volunteer.email}
         </h1>
@@ -161,7 +164,7 @@ export const VolunteerDetails: React.FC = () => {
 
         <Card>
           <Section title="Position" unbordered>
-            <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 1rem', margin: 0, marginBottom: '1rem' }}>
+            <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 1rem', margin: '0 0 1rem' }}>
               <dt style={toneText.neutral}>Base</dt>
               <dd style={{ margin: 0 }}>
                 {volunteer.base_latitude !== null && volunteer.base_longitude !== null ? (

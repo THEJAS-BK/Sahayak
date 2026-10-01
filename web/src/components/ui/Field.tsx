@@ -34,7 +34,7 @@ export const Field: React.FC<FieldProps> = ({ label, children, hint, hideLabel =
       </label>
       {children({ id, style: control })}
       {hint && (
-        <span style={{ fontSize: 'var(--text-label)', color: 'var(--color-ink-muted)' }}>{hint}</span>
+        <span style={{ fontSize: 'var(--text-meta)', color: 'var(--color-ink-muted)' }}>{hint}</span>
       )}
     </div>
   );
