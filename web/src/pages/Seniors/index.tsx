@@ -85,7 +85,9 @@ export const Seniors: React.FC = () => {
       {error && <Alert onRetry={() => void load(seniors.length === 0)}>{error}</Alert>}
 
       <Card flush>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--color-rule)' }}>
+        {/* The 0.625rem gutter is the dense table cell padding, so the title,
+            the filters and the first column of the table share one left edge. */}
+        <div style={{ padding: '0.875rem 0.625rem', borderBottom: '1px solid var(--color-rule)' }}>
           <Section
             title="Registered seniors"
             description="Including those still waiting to complete their profile."
@@ -129,7 +131,7 @@ export const Seniors: React.FC = () => {
         </div>
 
         {loading && seniors.length === 0 ? (
-          <SkeletonTable columns={6} rows={8} />
+          <SkeletonTable columns={7} rows={8} />
         ) : (
           <>
             <Table density="dense" stickyHeader>

@@ -103,7 +103,9 @@ export const Emergencies: React.FC = () => {
       )}
 
       <Card flush>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--color-rule)' }}>
+        {/* The 0.625rem gutter is the dense table cell padding, so the title,
+            the filters and the first column of the table share one left edge. */}
+        <div style={{ padding: '0.875rem 0.625rem', borderBottom: '1px solid var(--color-rule)' }}>
           <Section
             title="SOS events"
             description="Emergency events raised by the monitoring agent, newest first. Marking one reviewed records that an officer has seen it."
@@ -125,7 +127,7 @@ export const Emergencies: React.FC = () => {
         </div>
 
         {loading && events.length === 0 ? (
-          <SkeletonTable columns={7} rows={8} />
+          <SkeletonTable columns={8} rows={8} />
         ) : (
           <>
             <Table density="dense" stickyHeader>

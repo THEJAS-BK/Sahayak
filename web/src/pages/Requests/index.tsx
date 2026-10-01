@@ -153,7 +153,9 @@ export const Requests: React.FC = () => {
       )}
 
       <Card flush>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--color-rule)' }}>
+        {/* The 0.625rem gutter is the dense table cell padding, so the title,
+            the filters and the first column of the table share one left edge. */}
+        <div style={{ padding: '0.875rem 0.625rem', borderBottom: '1px solid var(--color-rule)' }}>
           <Section
             title="All requests"
             description="Every request ever raised, newest first. Open a row for the detail, the timeline and the assign action."
@@ -203,7 +205,7 @@ export const Requests: React.FC = () => {
         </div>
 
         {loading && requests.length === 0 ? (
-          <SkeletonTable columns={8} rows={10} />
+          <SkeletonTable columns={9} rows={10} />
         ) : (
           <>
             <Table density="dense" stickyHeader>

@@ -289,7 +289,9 @@ export const Monitoring: React.FC = () => {
       </Section>
 
       <Card flush>
-        <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-rule)' }}>
+        {/* The 0.625rem gutter is the dense table cell padding, so the title,
+            the filters and the first column of the table share one left edge. */}
+        <div style={{ padding: '0.75rem 0.625rem', borderBottom: '1px solid var(--color-rule)' }}>
           <Section
             title="Open requests"
             unbordered
